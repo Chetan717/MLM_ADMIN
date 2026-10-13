@@ -1,0 +1,95 @@
+--- a/functions/templateStorageCleanup.js
++++ b/functions/templateStorageCleanup.js
+@@ -120,11 +120,61 @@
+   return paths;
+ }
+ 
++/** Preserve Firebase assets during an exact same-key Firebase -> R2 migration.
++ * A CDN replacement must NEVER make the old Firebase object eligible for auto-delete.
++ */
++function mirroredR2TemplatePath(value, publicBase = "https://cdn.mlmposter.com") {
++  if (typeof value !== "string") return "";
++  try {
++    const url = new URL(value);
++    const base = new URL(publicBase);
++    if (url.origin !== base.origin) return "";
++    return normalizeTemplatePath(decode(url.pathname));
++  } catch { return ""; }
++}
++
++function collectMirroredR2Paths(value, paths = new Set()) {
++  if (typeof value === "string") {
++    const key = mirroredR2TemplatePath(value);
++    if (key) paths.add(key);
++  } else if (Array.isArray(value)) value.forEach(child => collectMirroredR2Paths(child, paths));
++  else if (value && Object.getPrototypeOf(value) === Object.prototype) {
++    Object.values(value).forEach(child => collectMirroredR2Paths(child, paths));
++  }
++  return paths;
++}
++
++function rewriteOldTemplateLinks(value, expectedBucket, stats) {
++  if (typeof value === "string") {
++    // Only the Firebase download URL form is supported by the client migration.
++    if (!value.startsWith("https://firebasestorage.googleapis.com/")) return value;
++    const key = getTemplateStoragePath(value, expectedBucket);
++    if (!key) return value;
++    stats.count++;
++    return `https://cdn.mlmposter.com/${key.split("/").map(encodeURIComponent).join("/")}`;
++  }
++  if (Array.isArray(value)) return value.map(v => rewriteOldTemplateLinks(v, expectedBucket, stats));
++  if (value && Object.getPrototypeOf(value) === Object.prototype) {
++    return Object.fromEntries(Object.entries(value).map(([k,v]) => [k, rewriteOldTemplateLinks(v, expectedBucket, stats)]));
++  }
++  return value;
++}
++
++function isOnlyTemplateUrlMigration(beforeData, afterData, expectedBucket) {
++  if (!beforeData || !afterData) return false;
++  const { isDeepStrictEqual } = require("node:util");
++  const stats = { count: 0 };
++  const rewritten = rewriteOldTemplateLinks(beforeData, expectedBucket, stats);
++  return stats.count > 0 && isDeepStrictEqual(rewritten, afterData);
++}
++
+ function getRemovedTemplateStoragePaths(beforeData, afterData, expectedBucket) {
+   const beforePaths = collectTemplateStoragePaths(beforeData, expectedBucket);
+   const afterPaths = collectTemplateStoragePaths(afterData, expectedBucket);
+ 
+-  return [...beforePaths].filter((path) => !afterPaths.has(path));
++  // Exact mirrored CDN references are retained: moving URLs does not delete bytes.
++  const mirrors = collectMirroredR2Paths(afterData);
++  return [...beforePaths].filter((path) => !afterPaths.has(path) && !mirrors.has(path));
+ }
+ 
+ function getUnreferencedTemplateStoragePaths(
+@@ -151,4 +201,5 @@
+   getRemovedTemplateStoragePaths,
+   getTemplateStoragePath,
+   getUnreferencedTemplateStoragePaths,
++  isOnlyTemplateUrlMigration,
+ };
+--- a/functions/index.js
++++ b/functions/index.js
+@@ -27,6 +27,7 @@
+ const {
+   getRemovedTemplateStoragePaths,
+   getUnreferencedTemplateStoragePaths,
++  isOnlyTemplateUrlMigration,
+ } = require("./templateStorageCleanup");
+ const {
+   normalizeEmail,
+@@ -1688,6 +1689,13 @@
+     const afterSnapshot = event.data?.after;
+     const beforeData = beforeSnapshot?.exists ? beforeSnapshot.data() || {} : {};
+     const afterData = afterSnapshot?.exists ? afterSnapshot.data() || {} : {};
++
++    // Bulk Firestore URL migration is followed by one Admin Sync CDN rebuild.
++    // Do not run expensive serialized R2 publishes for URL-only migration writes.
++    if (isOnlyTemplateUrlMigration(beforeData, afterData, getStorage().bucket().name)) {
++      console.info("R2 URL-only migration: skipping incremental publish; run Sync CDN after migration", { templateId });
++      return;
++    }
+ 
+     // Serialize the small R2 read-modify-write catalog updates. This prevents
+     // lost cards when Admin performs bulk/copy operations that write many
