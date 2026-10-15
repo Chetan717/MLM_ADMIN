@@ -23,6 +23,7 @@ const TemplateDetailPopup = memo(function TemplateDetailPopup({
   onEdit,
   onQualityCheck,
   canOperation = true,
+  canDelete = false,
   canQuality   = true,
 }) {
   if (!template) return null;
@@ -110,6 +111,12 @@ const TemplateDetailPopup = memo(function TemplateDetailPopup({
             </button>
           )}
 
+          {canDelete && !canOperation && (
+            <button onClick={onEdit} className="w-full rounded-2xl border border-red-200 p-4 text-left text-sm font-semibold text-red-600 hover:bg-red-50">
+              Request Template Delete (approval required)
+            </button>
+          )}
+
           {/* Quality Check — shown only if user has quality permission */}
           {canQuality && (
             <button
@@ -127,7 +134,7 @@ const TemplateDetailPopup = memo(function TemplateDetailPopup({
             </button>
           )}
 
-          {!canOperation && !canQuality && (
+          {!canOperation && !canQuality && !canDelete && (
             <p className="text-center text-sm text-gray-400 py-4">
               You do not have permission to perform any actions on this template.
             </p>

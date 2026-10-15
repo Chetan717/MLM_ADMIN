@@ -1,3 +1,4 @@
+import useUnsavedFormGuard from "../../../Utils/useUnsavedFormGuard";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import {
@@ -11,6 +12,7 @@ import {
 } from "@gravity-ui/icons";
 import ImageUploadInput from "../../../Utils/Imageuploadinput";
 import { useAdminDeleteGuard } from "../../../Utils/AdminDeleteGuard";
+import { getAdminSession } from "../../../Utils/adminSession";
 import { COLLECTIONS } from "../../../collections";
 import {
   GraphicsLinksField,
@@ -191,6 +193,11 @@ export default function EditTemplate() {
   const [searchParams]     = useSearchParams();
   const fromIssues         = searchParams.get("from") === "issues";
   const deleteRequestId    = searchParams.get("deleteRequest") || "";
+  const adminSession = getAdminSession() || {};
+  const accessTabs = Array.isArray(adminSession.assigntab) ? adminSession.assigntab : [];
+  const deleteOnly = adminSession.role !== "Master Admin" &&
+    accessTabs.includes("templates_delete") &&
+    !accessTabs.includes("templates") && !accessTabs.includes("templates_operation");
 
   const [form,          setForm]          = useState(null);
   const [fetchLoading,  setFetchLoading]  = useState(true);
@@ -199,6 +206,7 @@ export default function EditTemplate() {
   const [showDelete,    setShowDelete]    = useState(false);
   const [error,         setError]         = useState(null);
   const [success,       setSuccess]       = useState(false);
+  const unsavedGuard = useUnsavedFormGuard({ form, ready: Boolean(form) && !fetchLoading, saving: saveLoading, saved: success });
 
   // ── Quality check data ────────────────────────────────────────────────────
   const [qualityChecks,  setQualityChecks]  = useState({}); // { stableKey: { flag, note } }
@@ -440,8 +448,22 @@ export default function EditTemplate() {
   );
 
 
+  if (deleteOnly) return (
+    <div className="mx-auto max-w-xl p-6">
+      <button onClick={() => unsavedGuard.requestLeave("/templates")} className="mb-4 rounded-lg border px-4 py-2">Back to Templates</button>
+      <h1 className="mb-2 text-xl font-bold">Request Template Deletion</h1>
+      <p className="mb-4 text-sm text-gray-500">{templateTitle} — Master Admin approval is required. Edit/Save is unavailable with delete-only permission.</p>
+      {showDelete && <DeleteModal title={templateTitle} onConfirm={handleDelete} onCancel={() => setShowDelete(false)} loading={deleteLoading} />}
+      {DeleteAuthModal}
+      {BlockedToast}
+      {error && <p className="mb-3 text-red-600">{error}</p>}
+      <button type="button" className="rounded-lg bg-red-600 px-4 py-2 text-white" onClick={() => setShowDelete(true)}>Request Delete</button>
+    </div>
+  );
+
   return (
     <>
+      {unsavedGuard.modal}
       {deleteRequestId && (
         <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
           <b>Delete request approved.</b> Master Admin final delete ke liye niche <b>Delete Template</b> use karein.
@@ -462,7 +484,7 @@ export default function EditTemplate() {
 
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <button onClick={() => navigate("/templates")} className="w-9 h-9 flex items-center justify-center rounded-xl text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+            <button onClick={() => unsavedGuard.requestLeave("/templates")} className="w-9 h-9 flex items-center justify-center rounded-xl text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div>
@@ -496,7 +518,7 @@ export default function EditTemplate() {
         {error   && <div className="flex items-center gap-3 p-4 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 text-sm"><TriangleThunderbolt className="w-4 h-4 flex-shrink-0" />{error}</div>}
 
         {form && (
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form data-admin-edit-form="true" onSubmit={handleSubmit} className="space-y-5">
 
             {/* Type config */}
             <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl p-5 space-y-4">
@@ -580,7 +602,7 @@ export default function EditTemplate() {
             </div>
 
             <div className="flex items-center justify-end gap-3 pt-1">
-              <button type="button" onClick={() => navigate("/templates")} className="px-5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">Cancel</button>
+              <button type="button" onClick={() => unsavedGuard.requestLeave("/templates")} className="px-5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">Cancel</button>
               <button type="submit" disabled={saveLoading || success} className="px-6 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-semibold transition-colors shadow-lg shadow-violet-500/20 flex items-center gap-2">
                 {saveLoading && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
                 {saveLoading ? "Saving…" : issueCount > 0 ? "Save & Update Status" : "Save Changes"}

@@ -1,3 +1,4 @@
+import useUnsavedFormGuard from "../../../Utils/useUnsavedFormGuard";
 import { useState, useCallback, useMemo , useEffect } from "react";
 import { useNavigate } from "react-router";
 import { collection, doc, getDocs, setDoc, serverTimestamp } from "firebase/firestore";
@@ -94,6 +95,7 @@ export default function AddTemplate() {
   const navigate = useNavigate();
   const [templateId] = useState(() => doc(collection(db, COLLECTIONS.MLMTEMPLATE)).id);
   const [form,    setForm]    = useState(FORM_DEFAULTS);
+  const unsavedGuard = useUnsavedFormGuard({ form, ready: true, saving: loading, saved: success });
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState(null);
   const [success, setSuccess] = useState(false);
@@ -158,9 +160,10 @@ export default function AddTemplate() {
 
   return (
     <div className="p-4 md:p-6 max-w-2xl mx-auto space-y-6">
+      {unsavedGuard.modal}
 
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate("/templates")} className="w-9 h-9 flex items-center justify-center rounded-xl text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+        <button onClick={() => unsavedGuard.requestLeave("/templates")} className="w-9 h-9 flex items-center justify-center rounded-xl text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div>
@@ -172,7 +175,7 @@ export default function AddTemplate() {
       {success && <div className="flex items-center gap-3 p-4 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-sm"><CircleCheck className="w-4 h-4 flex-shrink-0" />Template created! Redirecting…</div>}
       {error   && <div className="flex items-center gap-3 p-4 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 text-sm"><TriangleThunderbolt className="w-4 h-4 flex-shrink-0" />{error}</div>}
 
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <form data-admin-edit-form="true" onSubmit={handleSubmit} className="space-y-5">
 
         {/* Type config */}
         <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl p-5 space-y-4">
@@ -271,7 +274,7 @@ export default function AddTemplate() {
         </div>
 
         <div className="flex items-center justify-end gap-3 pt-1">
-          <button type="button" onClick={() => navigate("/templates")} className="px-5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">Cancel</button>
+          <button type="button" onClick={() => unsavedGuard.requestLeave("/templates")} className="px-5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">Cancel</button>
           <button type="submit" disabled={loading || success} className="px-6 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-semibold transition-colors shadow-lg shadow-violet-500/20 flex items-center gap-2">
             {loading && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
             {loading ? "Saving…" : "Save Template"}

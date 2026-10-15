@@ -1,3 +1,4 @@
+import useUnsavedFormGuard from "../../../Utils/useUnsavedFormGuard";
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { doc, getDoc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
@@ -555,6 +556,7 @@ export default function EditCompanies() {
   const [showDelete,    setShowDelete]    = useState(false);
   const [error,         setError]         = useState(null);
   const [success,       setSuccess]       = useState(false);
+  const unsavedGuard = useUnsavedFormGuard({ form, ready: Boolean(form) && !fetchLoading, saving: saveLoading, saved: success });
 
   useEffect(() => {
     if (!id) return;
@@ -644,6 +646,7 @@ export default function EditCompanies() {
 
   return (
     <>
+      {unsavedGuard.modal}
       {deleteRequestId && (
         <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
           <b>Delete request approved.</b> Master Admin final delete ke liye niche <b>Delete Company</b> use karein.
@@ -655,7 +658,7 @@ export default function EditCompanies() {
       <div className="p-4 md:p-6 max-w-2xl mx-auto space-y-6">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <button onClick={() => navigate("/companies")} className="w-9 h-9 flex items-center justify-center rounded-xl text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"><ArrowLeft className="w-5 h-5" /></button>
+            <button onClick={() => unsavedGuard.requestLeave("/companies")} className="w-9 h-9 flex items-center justify-center rounded-xl text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"><ArrowLeft className="w-5 h-5" /></button>
             <div>
               <h1 className="text-xl font-bold text-gray-900 dark:text-white" style={{ fontFamily: "'Syne', sans-serif" }}>Edit Company</h1>
               <p className="text-sm text-gray-400 dark:text-gray-500 truncate max-w-xs">{form?.name || ""}</p>
@@ -670,7 +673,7 @@ export default function EditCompanies() {
         {error && <div className="flex items-center gap-3 p-4 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 text-sm"><TriangleThunderbolt className="w-4 h-4 flex-shrink-0" />{error}</div>}
 
         {form && (
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form data-admin-edit-form="true" onSubmit={handleSubmit} className="space-y-4">
             <SectionCard icon={<Factory className="w-4 h-4" />} title="Basic Information" subtitle="Name, address & owner details" defaultOpen>
               <InputField label="Company Name" id="name" value={form.name} onChange={handleText("name")} placeholder="e.g. Vestige Marketing" required />
               <InputField label="Address" id="address" value={form.address} onChange={handleText("address")} placeholder="e.g. 123 Main Street, Mumbai" />
@@ -708,7 +711,7 @@ export default function EditCompanies() {
               <ToggleSwitch label="Launched" description="Company has officially launched its program" checked={form.launched} onChange={setField("launched")} />
             </SectionCard>
             <div className="flex items-center justify-end gap-3 pt-1">
-              <button type="button" onClick={() => navigate("/companies")} className="px-5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">Cancel</button>
+              <button type="button" onClick={() => unsavedGuard.requestLeave("/companies")} className="px-5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">Cancel</button>
               <button type="submit" disabled={saveLoading || success} className="px-6 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-semibold transition-colors shadow-lg shadow-violet-500/20 flex items-center gap-2">
                 {saveLoading && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
                 {saveLoading ? "Saving…" : "Save Changes"}

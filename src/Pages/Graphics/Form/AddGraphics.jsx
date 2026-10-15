@@ -1,3 +1,4 @@
+import useUnsavedFormGuard from "../../../Utils/useUnsavedFormGuard";
 import { useState, useCallback } from "react";
 import { useNavigate } from "react-router";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
@@ -146,6 +147,7 @@ function GraphicsLinksField({ items, onChange }) {
 export default function AddGraphics() {
   const navigate = useNavigate();
   const [form,    setForm]    = useState(INITIAL_FORM);
+  const unsavedGuard = useUnsavedFormGuard({ form, ready: true, saving: loading, saved: success });
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState(null);
   const [success, setSuccess] = useState(false);
@@ -182,11 +184,12 @@ export default function AddGraphics() {
 
   return (
     <div className="p-4 md:p-6 max-w-2xl mx-auto space-y-6">
+      {unsavedGuard.modal}
 
       {/* Header */}
       <div className="flex items-center gap-3">
         <button
-          onClick={() => navigate("/graphics")}
+          onClick={() => unsavedGuard.requestLeave("/graphics")}
           className="w-9 h-9 flex items-center justify-center rounded-xl text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
         >
           <ArrowLeft className="w-5 h-5" />
@@ -213,7 +216,7 @@ export default function AddGraphics() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <form data-admin-edit-form="true" onSubmit={handleSubmit} className="space-y-5">
 
         {/* Basic info */}
         <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl p-5 space-y-4">
@@ -277,7 +280,7 @@ export default function AddGraphics() {
         <div className="flex items-center justify-end gap-3 pt-1">
           <button
             type="button"
-            onClick={() => navigate("/graphics")}
+            onClick={() => unsavedGuard.requestLeave("/graphics")}
             className="px-5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
           >
             Cancel

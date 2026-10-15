@@ -21,9 +21,11 @@ export default function Notifications() {
       setSelected(previous => new Set([...previous].filter(id => (result.data.campaigns || []).some(item => item.id === id))));
     } catch (error) { setStatus({ type: "error", text: messageOf(error) }); } finally { setLoading(false); }
   }, []);
-  useEffect(() => { if (session?.role === "Master Admin") void load(); }, [load, session?.role]);
+  const canNotify = session?.role === "Master Admin" || (session?.assigntab || []).includes("notifications");
+  const canDeleteHistory = session?.role === "Master Admin";
+  useEffect(() => { if (canNotify) void load(); }, [load, canNotify]);
   const allSelected = useMemo(() => overview.campaigns.length > 0 && overview.campaigns.every(item => selected.has(item.id)), [overview.campaigns, selected]);
-  if (session?.role !== "Master Admin") return <div className="p-8"><h1 className="text-2xl font-bold">Access denied</h1><p className="mt-2 text-gray-500">Only Master Admin can manage app notifications.</p></div>;
+  if (!canNotify) return <div className="p-8"><h1 className="text-2xl font-bold">Access denied</h1><p className="mt-2 text-gray-500">Notification permission is required.</p></div>;
 
   const send = async event => {
     event.preventDefault();
@@ -65,7 +67,7 @@ export default function Notifications() {
         <section>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2"><input type="checkbox" aria-label="Select all recent notifications" checked={allSelected} onChange={toggleAll} disabled={!overview.campaigns.length || deleting} /><h2 className="font-bold">Recent notifications</h2></div>
-            <div className="flex gap-2"><button onClick={() => remove(false)} disabled={!selected.size || deleting} className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-bold text-red-600 disabled:opacity-40">Delete selected ({selected.size})</button><button onClick={() => remove(true)} disabled={!overview.campaigns.length || deleting} className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-40">Clear All</button></div>
+            {canDeleteHistory && <div className="flex gap-2"><button onClick={() => remove(false)} disabled={!selected.size || deleting} className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-bold text-red-600 disabled:opacity-40">Delete selected ({selected.size})</button><button onClick={() => remove(true)} disabled={!overview.campaigns.length || deleting} className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-40">Clear All</button></div>}
           </div>
           <div className="space-y-3">{overview.campaigns.map(item => <article key={item.id} className={`rounded-2xl border bg-white p-4 dark:border-gray-800 dark:bg-gray-900 ${selected.has(item.id) ? "ring-2 ring-violet-500" : ""}`}><div className="flex gap-3"><input type="checkbox" aria-label={`Select ${item.title}`} checked={selected.has(item.id)} onChange={() => toggle(item.id)} disabled={deleting} /><div className="min-w-0 flex-1"><div className="flex justify-between gap-3"><b className="truncate">{item.title}</b><span className="whitespace-nowrap text-xs text-gray-400">{when(item.createdAt)}</span></div><p className="mt-2 text-sm">{item.body}</p><p className="mt-2 text-xs text-gray-500">Accepted {item.accepted}/{item.targeted} · {item.url}</p></div></div></article>)}{!loading && !overview.campaigns.length && <p className="rounded-2xl border border-dashed p-8 text-center text-gray-500 dark:border-gray-800">No recent notifications.</p>}{loading && <p className="p-8 text-center text-gray-400">Loading…</p>}</div>
         </section>

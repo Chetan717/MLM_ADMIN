@@ -88,7 +88,8 @@ const OWNER_TABS = [
   "templatedata",
   "taskmanagement",
   "security",
-  "notifications"
+  "notifications",
+  "templates_delete"
 ];
 const EXPO_PROJECT_ID = "555505c6-41df-486d-b225-4d9832044425";
 const APP_ORIGIN = "https://app.mlmlive.in";
@@ -171,6 +172,14 @@ async function requireMasterAdmin(
     request.auth?.token?.role !== "Master Admin"
   )
     throw new HttpsError("permission-denied", message);
+  return session;
+}
+
+async function requireAssignedAdminTab(request, tab, message) {
+  const session = await requireSession(request);
+  const owner = request.auth?.token?.actorType === "owner" && request.auth?.token?.role === "Master Admin";
+  const assigned = Array.isArray(request.auth?.token?.tabs) && request.auth.token.tabs.includes(tab);
+  if (!owner && !assigned) throw new HttpsError("permission-denied", message);
   return session;
 }
 
@@ -2712,7 +2721,7 @@ exports.panelCreateDeleteRequest = onCall(
       : [];
     const hasAccess =
       resourceType === "template"
-        ? tabs.some((tab) => ["templates", "templates_operation"].includes(tab))
+        ? tabs.some((tab) => ["templates", "templates_operation", "templates_delete"].includes(tab))
         : tabs.includes("companies");
     if (!hasAccess)
       throw new HttpsError(
@@ -3033,7 +3042,7 @@ exports.registerExpoPushToken = onRequest(
 exports.panelPushOverview = onCall(
   { region: REGION, cors: true },
   async (request) => {
-    await requireMasterAdmin(request);
+    await requireAssignedAdminTab(request, "notifications", "Notification access is required.");
     const [devices, campaigns] = await Promise.all([
       db
         .collection("_expoPushDevices")
@@ -3105,7 +3114,7 @@ exports.panelDeletePushCampaigns = onCall(
 exports.panelSendPushNotification = onCall(
   { region: REGION, cors: true, secrets: [EXPO_ACCESS_TOKEN] },
   async (request) => {
-    const { data: session } = await requireMasterAdmin(request);
+    const { data: session } = await requireAssignedAdminTab(request, "notifications", "Notification access is required.");
     await rateLimit("admin_push_send", request.auth.uid, 20, 60 * 60 * 1000);
     const title = cleanText(request.data?.title, 100),
       body = cleanText(request.data?.body, 1000),
@@ -3154,5 +3163,42 @@ exports.panelSendPushNotification = onCall(
           request.auth.token.name || session.actorName || "Master Admin",
       });
     return { targeted: messages.length, accepted, rejected };
+  },
+);
+
+
+// General Admin media upload: short-lived R2 PUT URL, scoped by panel permissions.
+// No Firebase Storage fallback. References are never physically deleted here.
+exports.panelCreateR2AdminMediaUpload = onCall(
+  { region: REGION, cors: true, secrets: R2_FUNCTION_SECRETS },
+  async (request) => {
+    await requireSession(request);
+    const path = String(request.data?.storagePath || "").trim().replace(/^\/+|\/+$/g, "");
+    const filename = String(request.data?.fileName || "").trim();
+    const mime = String(request.data?.contentType || "").trim().toLowerCase();
+    const size = Number(request.data?.size || 0);
+    const roleMaster = request.auth?.token?.actorType === "owner" && request.auth?.token?.role === "Master Admin";
+    const tabs = Array.isArray(request.auth?.token?.tabs) ? request.auth.token.tabs.map(String) : [];
+    const scope = path.split("/")[0];
+    const needed = scope === "templates" ? ["templates", "templates_operation"]
+      : scope === "companies" ? ["companies"]
+      : scope === "graphics" || scope === "music" ? ["graphics", "music"] : [];
+    if (!needed.length || (!roleMaster && !needed.some((t) => tabs.includes(t)))) {
+      throw new HttpsError("permission-denied", "This media section is not assigned to your admin account.");
+    }
+    if (!/^(?:templates|companies|graphics|music)\/[A-Za-z0-9_/-]{1,220}$/.test(path) || path.includes("..")) {
+      throw new HttpsError("invalid-argument", "Unsupported upload folder.");
+    }
+    if (!/^[A-Za-z0-9._-]{1,180}$/.test(filename) || filename.includes("..")) {
+      throw new HttpsError("invalid-argument", "Invalid filename.");
+    }
+    const allowed = mime === "image/webp" || /^video\/(mp4|webm|quicktime)$/.test(mime)
+      || /^audio\/(mpeg|mp3|mp4|wav|ogg|webm|aac|x-m4a)$/.test(mime);
+    if (!allowed) throw new HttpsError("invalid-argument", "Only WebP, supported video or audio allowed.");
+    const max = mime.startsWith("video/") ? 100 * 1024 * 1024 : mime.startsWith("audio/") ? 30 * 1024 * 1024 : 20 * 1024 * 1024;
+    if (!Number.isSafeInteger(size) || size < 1 || size > max) throw new HttpsError("invalid-argument", "Invalid upload size.");
+    const config = r2Config();
+    const key = `${path}/${filename}`;
+    return { ok: true, key, publicUrl: r2PublicObjectUrl(config,key), uploadUrl: createPresignedPutUrl(config,key,600,mime), expiresInSeconds:600 };
   },
 );

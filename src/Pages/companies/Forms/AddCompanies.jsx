@@ -1,3 +1,4 @@
+import useUnsavedFormGuard from "../../../Utils/useUnsavedFormGuard";
 import { useState, useCallback } from "react";
 import { useNavigate } from "react-router";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
@@ -652,6 +653,7 @@ function PlansField({ items, onChange }) {
 export default function AddCompanies() {
   const navigate = useNavigate();
   const [form,    setForm]    = useState(INITIAL_STATE);
+  const unsavedGuard = useUnsavedFormGuard({ form, ready: true, saving: loading, saved: success });
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState(null);
   const [success, setSuccess] = useState(false);
@@ -699,10 +701,11 @@ export default function AddCompanies() {
 
   return (
     <div className="p-4 md:p-6 max-w-2xl mx-auto space-y-6">
+      {unsavedGuard.modal}
 
       {/* Header */}
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate("/companies")} className="w-9 h-9 flex items-center justify-center rounded-xl text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+        <button onClick={() => unsavedGuard.requestLeave("/companies")} className="w-9 h-9 flex items-center justify-center rounded-xl text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div>
@@ -722,7 +725,7 @@ export default function AddCompanies() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form data-admin-edit-form="true" onSubmit={handleSubmit} className="space-y-4">
 
         {/* Basic info */}
         <SectionCard icon={<Factory className="w-4 h-4" />} title="Basic Information" subtitle="Name, address & owner details" defaultOpen>
@@ -780,7 +783,7 @@ export default function AddCompanies() {
 
         {/* Actions */}
         <div className="flex items-center justify-end gap-3 pt-1">
-          <button type="button" onClick={() => navigate("/companies")} className="px-5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">Cancel</button>
+          <button type="button" onClick={() => unsavedGuard.requestLeave("/companies")} className="px-5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">Cancel</button>
           <button type="submit" disabled={loading || success} className="px-6 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-semibold transition-colors shadow-lg shadow-violet-500/20 flex items-center gap-2">
             {loading && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
             {loading ? "Saving…" : "Save Company"}

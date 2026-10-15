@@ -1,6 +1,4 @@
 import { useState, useRef, useCallback } from "react";
-import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
-import { storage } from "../../Firebase";
 import { uploadTemplateAssetToR2 } from "./r2Upload";
 import {
   ArrowUp,
@@ -40,10 +38,11 @@ export default function VideoUploadInput({
   storagePath,
   placeholder = "Paste video URL or click ↑ to upload",
   disabled = false,
-  provider = "firebase",
+  provider = "r2",
 }) {
   const fileRef = useRef(null);
   const dragDepth = useRef(0);
+  const [draftUrl, setDraftUrl] = useState(null);
   const [progress, setProgress] = useState(null);
   const [status, setStatus] = useState("idle");
   const [errMsg, setErrMsg] = useState("");
@@ -53,18 +52,20 @@ export default function VideoUploadInput({
     async (file) => {
       if (!file) return;
 
-      if (!file.type.startsWith("video/")) {
+      if (!file.type.startsWith("video/") && !file.type.startsWith("audio/")) {
         setErrMsg("Please select a video file.");
         setStatus("error");
         return;
       }
+
+      if (String(value || "").trim() && !window.confirm("Replace this media URL? The previous image/video may be used elsewhere. Only this field will change; its R2 file will NOT be deleted. Save the form to confirm.")) return;
 
       setStatus("uploading");
       setProgress(0);
       setErrMsg("");
 
       try {
-        const duration = await checkVideoDuration(file);
+        const duration = file.type.startsWith("audio/") ? 0 : await checkVideoDuration(file);
         if (duration > MAX_DURATION_S) {
           setErrMsg(
             `Video is ${Math.ceil(duration)}s — max allowed is ${MAX_DURATION_S}s.`
@@ -75,35 +76,13 @@ export default function VideoUploadInput({
         }
 
         const fileName = genName(file);
-        let url = "";
-        if (provider === "r2") {
-          url = await uploadTemplateAssetToR2({
-            blob: file,
-            storagePath,
-            fileName,
-            contentType: file.type || "video/mp4",
-            onProgress: setProgress,
-          });
-        } else {
-          const storageRef = ref(storage, `${storagePath}/${fileName}`);
-          const uploadTask = uploadBytesResumable(storageRef, file, {
-            contentType: file.type,
-            cacheControl: "public,max-age=31536000,immutable",
-          });
-
-          await new Promise((resolve, reject) => {
-            uploadTask.on(
-              "state_changed",
-              (snap) =>
-                setProgress(
-                  Math.round((snap.bytesTransferred / snap.totalBytes) * 100)
-                ),
-              reject,
-              resolve,
-            );
-          });
-          url = await getDownloadURL(uploadTask.snapshot.ref);
-        }
+        const url = await uploadTemplateAssetToR2({
+          blob: file,
+          storagePath,
+          fileName,
+          contentType: file.type || "video/mp4",
+          onProgress: setProgress,
+        });
 
         onChange(url);
         setStatus("done");
@@ -156,6 +135,7 @@ export default function VideoUploadInput({
   }, [disabled, status, uploadFile]);
 
   const handleClear = useCallback(() => {
+    if (!window.confirm("Remove from this field only? The original R2/Firebase file stays available for other templates and companies. Save the form to confirm.")) return;
     onChange("");
     setStatus("idle");
     setErrMsg("");
@@ -174,11 +154,12 @@ export default function VideoUploadInput({
       <div className="flex items-center gap-2">
         <input
           type="url"
-          value={value}
-          onChange={(e) => {
-            onChange(e.target.value);
-            setStatus("idle");
-            setErrMsg("");
+          value={draftUrl === null ? (value || "") : draftUrl}
+          onChange={(e) => setDraftUrl(e.target.value)}
+          onBlur={() => {
+            if (draftUrl === null) return;
+            if (draftUrl !== (value || "") && (!value || window.confirm("Change this URL? Only the database field changes after Save; shared files will be kept in R2."))) onChange(draftUrl);
+            setDraftUrl(null);
           }}
           placeholder={placeholder}
           disabled={disabled || isUploading}
@@ -188,7 +169,7 @@ export default function VideoUploadInput({
         <input
           ref={fileRef}
           type="file"
-          accept="video/*"
+          accept="video/*,audio/*"
           className="hidden"
           onChange={handleFile}
         />

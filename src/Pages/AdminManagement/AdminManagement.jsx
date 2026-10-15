@@ -18,6 +18,7 @@ const ALL_TABS = [
   { id: "templates",            label: "Templates (Full Access)" },
   { id: "templates_operation",  label: "Templates — Operation Only" },
   { id: "templates_quality",    label: "Templates — Quality Check Only" },
+  { id: "templates_delete",     label: "Templates — Delete Request Access" },
   { id: "Graphics",             label: "App Graphics" },
   { id: "marketing",            label: "Marketing" },
   { id: "removebg",             label: "Remove BG API" },
@@ -25,6 +26,7 @@ const ALL_TABS = [
   { id: "adminmanagement",      label: "Admin Management" },
   { id: "templatedata",         label: "Template Data Report" },
   { id: "taskmanagement",       label: "Task Management" },
+  { id: "notifications",        label: "App Notifications — Send" },
 ];
 
 const ROLES = TASK_ROLE_OPTIONS.map((role) => role.label);
@@ -71,6 +73,7 @@ function TabSelector({ selected, onChange, isMaster }) {
     { id: "templates",           label: "Templates (Full Access)",          color: "violet" },
     { id: "templates_operation", label: "Templates — Operation Only",       color: "indigo" },
     { id: "templates_quality",   label: "Templates — Quality Check Only",   color: "emerald" },
+    { id: "templates_delete",    label: "Templates — Delete Request Access", color: "indigo" },
   ];
   const otherTabs = ALL_TABS.filter(t => !TEMPLATE_GROUPS.find(g => g.id === t.id));
 

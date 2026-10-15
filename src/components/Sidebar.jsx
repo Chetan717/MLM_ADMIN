@@ -45,7 +45,7 @@ const DeleteRequestIcon = () => <svg className="w-5 h-5" fill="none" viewBox="0 
 const BellIcon = () => <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2a2 2 0 01-.6 1.4L4 17h5m6 0a3 3 0 01-6 0"/></svg>;
 
 // ── Template-related tab IDs that give access to /templates ────────────────
-const TEMPLATE_TAB_IDS = ["templates", "templates_operation", "templates_quality"];
+const TEMPLATE_TAB_IDS = ["templates", "templates_operation", "templates_quality", "templates_delete"];
 
 // ── All possible nav items ─────────────────────────────────────────────────
 const ALL_NAV_ITEMS = [
@@ -53,7 +53,7 @@ const ALL_NAV_ITEMS = [
   { icon: LogoMicrosoftOffice,label: "Companies",              id: "companies",       link: "/companies" },
   { icon: LayoutHeaderColumns, label: "Templates",             id: "templates",       link: "/templates",
     // also shown when user has sub-permissions
-    altIds: ["templates_operation", "templates_quality"] },
+    altIds: ["templates_operation", "templates_quality", "templates_delete"] },
   { icon: GeoPolygons,        label: "App Graphics",           id: "Graphics",        link: "/graphics" },
   { icon: ChartTreemap,       label: "Marketing",              id: "marketing",       link: "/marketing" },
   { icon: ChartTreemap,       label: "Remove Background API",  id: "removebg",        link: "/removebg" },
@@ -61,7 +61,7 @@ const ALL_NAV_ITEMS = [
   { iconComponent: PersonIcon,   label: "User Leads",          id: "leads",           link: "/leads" },
   { iconComponent: ReportIcon,   label: "Template Data",       id: "templatedata",    link: "/templatedata" },
   { iconComponent: TaskIcon,     label: "Task Management",     id: "taskmanagement", link: "/taskmanagement" },
-  { iconComponent: BellIcon,     label: "App Notifications",   id: "notifications", link: "/notifications", ownerOnly: true },
+  { iconComponent: BellIcon,     label: "App Notifications",   id: "notifications", link: "/notifications" },
   { iconComponent: DeleteRequestIcon, label: "Delete Requests", id: "delete_requests", link: "/delete-requests", ownerOnly: true },
   { iconComponent: ShieldIcon,   label: "Admin Management",    id: "adminmanagement", link: "/adminmanagement" },
 ];
@@ -100,11 +100,13 @@ export default function Sidebar({
   const navItems  = getVisibleNavItems(adminUser);
 
   const handleLogout = async () => {
+    if (!window.dispatchEvent(new CustomEvent("admin:route-request", { detail: { destination: "/login" }, cancelable: true }))) return;
     await logout();
     navigate("/login");
   };
 
   const hanClick = (id, link) => {
+    if (!window.dispatchEvent(new CustomEvent("admin:route-request", { detail: { destination: link }, cancelable: true }))) return;
     setActive(id);
     setMobileOpen(false);
     navigate(link);

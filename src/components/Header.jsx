@@ -42,7 +42,7 @@ export default function Header({
 
       {/* Right controls */}
       <div className="flex items-center gap-2 ml-auto flex-shrink-0">
-        <button onClick={() => navigate("/security")} className="px-3 py-2 rounded-xl text-sm font-semibold text-violet-600 hover:bg-violet-50">Login Activity</button>
+        <button onClick={() => { if (window.dispatchEvent(new CustomEvent("admin:route-request", { detail: { destination: "/security" }, cancelable: true }))) navigate("/security"); }} className="px-3 py-2 rounded-xl text-sm font-semibold text-violet-600 hover:bg-violet-50">Login Activity</button>
       
         <button
           onClick={toggleTheme}

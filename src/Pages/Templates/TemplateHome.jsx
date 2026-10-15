@@ -84,6 +84,7 @@ export default function TemplateHome() {
 
   const canOperation   = hasPermission(admin, "templates_operation");
   const canQuality     = hasPermission(admin, "templates_quality");
+  const canDelete      = hasPermission(admin, "templates_delete");
 
   // ── Template data ────────────────────────────────────────────────────────
   const [allTemplates, setAllTemplates] = useState([]);
@@ -560,6 +561,7 @@ export default function TemplateHome() {
           onEdit={handleEdit}
           onQualityCheck={handleOpenQuality}
           canOperation={canOperation}
+          canDelete={canDelete}
           canQuality={canQuality}
         />
       )}

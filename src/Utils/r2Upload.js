@@ -1,7 +1,7 @@
 import { httpsCallable } from "firebase/functions";
 import { functions } from "../../Firebase";
 
-const createTemplateUpload = httpsCallable(functions, "panelCreateR2TemplateUpload");
+const createTemplateUpload = httpsCallable(functions, "panelCreateR2AdminMediaUpload");
 
 function uploadWithProgress({ uploadUrl, blob, contentType, cacheControl, onProgress }) {
   return new Promise((resolve, reject) => {

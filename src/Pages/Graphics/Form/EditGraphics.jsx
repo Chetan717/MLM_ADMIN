@@ -1,3 +1,4 @@
+import useUnsavedFormGuard from "../../../Utils/useUnsavedFormGuard";
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useParams } from "react-router";
 import {
@@ -221,6 +222,7 @@ export default function EditGraphics() {
   const [showDelete, setShowDelete] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
+  const unsavedGuard = useUnsavedFormGuard({ form, ready: Boolean(form) && !fetchLoading, saving: saveLoading, saved: success });
 
   // ── Load ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -354,6 +356,7 @@ export default function EditGraphics() {
 
   return (
     <>
+      {unsavedGuard.modal}
       {showDelete && (
         <DeleteModal
           name={form?.GraphicName || "this entry"}
@@ -370,7 +373,7 @@ export default function EditGraphics() {
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => navigate("/graphics")}
+              onClick={() => unsavedGuard.requestLeave("/graphics")}
               className="w-9 h-9 flex items-center justify-center rounded-xl text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
             >
               <ArrowLeft className="w-5 h-5" />
@@ -411,7 +414,7 @@ export default function EditGraphics() {
         )}
 
         {form && (
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form data-admin-edit-form="true" onSubmit={handleSubmit} className="space-y-5">
             {/* Basic info */}
             <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl p-5 space-y-4">
               <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
@@ -478,7 +481,7 @@ export default function EditGraphics() {
             <div className="flex items-center justify-end gap-3 pt-1">
               <button
                 type="button"
-                onClick={() => navigate("/graphics")}
+                onClick={() => unsavedGuard.requestLeave("/graphics")}
                 className="px-5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
               >
                 Cancel
