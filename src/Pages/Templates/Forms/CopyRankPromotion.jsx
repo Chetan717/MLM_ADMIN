@@ -24,16 +24,11 @@ import { selectCls, FieldLabel } from "../GraphicsLinkRow";
 // ── constants ─────────────────────────────────────────────────────────────────
 const ALL_COMPANIES_TARGET = "__ALL_COMPANIES__";
 
-const COPY_SELECT_TYPES = [
-  { name: "Rank Promotion",    value: "Rank_Promotion"    },
-  { name: "Thank You Banner B", value: "ThankYou_Banner_B" },
-  { name: "Meeting",           value: "Meeting"           },
-  { name: "Training",          value: "Training"          },
-];
+const TEMPLATE_TYPE_NAMES = {
+  Rank_Promotion: "Rank Promotion",
+  ThankYou_Banner_B: "Thank You Banner B",
+};
 
-// ── helpers ───────────────────────────────────────────────────────────────────
-const isDemoCompany = (name = "") =>
-  name.trim().toLowerCase().includes("demo");
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function CopyRankPromotion() {
@@ -45,8 +40,9 @@ export default function CopyRankPromotion() {
   const [loading,    setLoading]    = useState(true);
   const [fetchError, setFetchError] = useState(null);
 
-  // which SelectType to copy
-  const [selectedSelectType, setSelectedSelectType] = useState("Rank_Promotion");
+  // Source can be any company; types come from the selected source's real templates.
+  const [sourceCompany, setSourceCompany] = useState("");
+  const [selectedSelectType, setSelectedSelectType] = useState("");
 
   // selection state
   const [checkedSubtypes, setCheckedSubtypes] = useState(new Set());
@@ -98,17 +94,26 @@ export default function CopyRankPromotion() {
   }, []);
 
   // ── derived ─────────────────────────────────────────────────────────────────
-  const demoCompany = useMemo(
-    () => companies.find((c) => isDemoCompany(c.name)) || null,
-    [companies],
+  const source = useMemo(
+    () => companies.find((c) => c.id === sourceCompany) || null,
+    [companies, sourceCompany],
+  );
+
+  const sourceTemplates = useMemo(
+    () => templates.filter((t) => t.Company === sourceCompany),
+    [templates, sourceCompany],
+  );
+
+  const availableTypes = useMemo(() =>
+    [...new Set(sourceTemplates.map((t) => t.SelectType).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b))
+      .map((value) => ({ value, name: TEMPLATE_TYPE_NAMES[value] || value.replaceAll("_", " ") })),
+    [sourceTemplates],
   );
 
   const demoTemplates = useMemo(
-    () =>
-      demoCompany
-        ? templates.filter((t) => t.Company === demoCompany.id && t.SelectType === selectedSelectType)
-        : [],
-    [templates, demoCompany, selectedSelectType],
+    () => sourceTemplates.filter((t) => t.SelectType === selectedSelectType),
+    [sourceTemplates, selectedSelectType],
   );
 
   // group by Subtype → list of templates
@@ -127,11 +132,8 @@ export default function CopyRankPromotion() {
   );
 
   const targetCompanies = useMemo(
-    () =>
-      demoCompany
-        ? companies.filter((c) => c.id !== demoCompany.id)
-        : companies,
-    [companies, demoCompany],
+    () => companies.filter((c) => c.id !== sourceCompany),
+    [companies, sourceCompany],
   );
 
   const isAllCompaniesTarget = targetCompany === ALL_COMPANIES_TARGET;
@@ -157,6 +159,7 @@ export default function CopyRankPromotion() {
   // performs the actual write, optionally renaming subtypes that clash with
   // an existing subtype name in the target company (appends " Copy")
   const runCopy = useCallback(async (subtypesToCopy, subtypesToRename = new Set()) => {
+    if (!sourceCompany || !selectedSelectType || !targetCompany || targetCompany === sourceCompany) return;
     setCopying(true);
     setCopyResult(null);
 
@@ -294,13 +297,13 @@ export default function CopyRankPromotion() {
 
     setCopyResult({ copied, skipped: skippedDuplicate, errors });
     setCopying(false);
-  }, [targetCompany, subtypeMap, selectedSelectType, isAllCompaniesTarget, targetCompanies]);
+  }, [sourceCompany, targetCompany, subtypeMap, selectedSelectType, isAllCompaniesTarget, targetCompanies]);
 
   // entry point for the Copy button — checks for subtype-name clashes in the
   // target company first, and if found, opens a confirmation popup before
   // writing anything
   const handleCopy = useCallback(async () => {
-    if (!targetCompany || checkedSubtypes.size === 0) return;
+    if (!sourceCompany || !selectedSelectType || !targetCompany || checkedSubtypes.size === 0 || targetCompany === sourceCompany) return;
 
     if (isAllCompaniesTarget) {
       if (targetCompanies.length === 0) return;
@@ -345,7 +348,7 @@ export default function CopyRankPromotion() {
     }
 
     await runCopy(checkedSubtypes);
-  }, [targetCompany, checkedSubtypes, selectedSelectType, runCopy, isAllCompaniesTarget, targetCompanies.length]);
+  }, [sourceCompany, targetCompany, checkedSubtypes, selectedSelectType, runCopy, isAllCompaniesTarget, targetCompanies.length]);
 
   // admin confirmed: duplicate the clashing subtypes as "<name> Copy"
   const confirmDuplicate = useCallback(async () => {
@@ -420,76 +423,83 @@ export default function CopyRankPromotion() {
             className="text-xl font-bold text-gray-900 dark:text-white"
             style={{ fontFamily: "'Syne', sans-serif" }}
           >
-            Copy Rank Promotion Templates
+            Copy Designs Between Companies
           </h1>
           <p className="text-sm text-gray-400 mt-0.5">
-            Duplicate Demo Company subtypes into another company
+            Copy designs from any source company into a different company
           </p>
         </div>
       </div>
 
-      {/* SelectType picker */}
+      {/* Source company picker */}
       <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl p-5 space-y-3">
-        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          Template Type to Copy <span className="text-red-400">*</span>
-        </label>
-        <div className="flex flex-wrap gap-2">
-          {COPY_SELECT_TYPES.map((t) => (
-            <button
-              key={t.value}
-              type="button"
-              onClick={() => {
-                setSelectedSelectType(t.value);
-                setCheckedSubtypes(new Set());
-                setTargetCompany((current) =>
-                  current === ALL_COMPANIES_TARGET ? ALL_COMPANIES_TARGET : "",
-                );
-                setCopyResult(null);
-              }}
-              className={`px-4 py-2 rounded-xl text-sm font-semibold border transition-all ${
-                selectedSelectType === t.value
-                  ? "bg-violet-600 text-white border-violet-600 shadow-lg shadow-violet-500/20"
-                  : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
-              }`}
-            >
-              {t.name}
-            </button>
-          ))}
-        </div>
+        <FieldLabel required>Copy From Company</FieldLabel>
+        <select
+          value={sourceCompany}
+          onChange={(e) => {
+            const next = e.target.value;
+            setSourceCompany(next);
+            setSelectedSelectType("");
+            setCheckedSubtypes(new Set());
+            setTargetCompany("");
+            setCopyResult(null);
+            setShowConflictPopup(false);
+          }}
+          className={selectCls}
+        >
+          <option value="">Select source company…</option>
+          {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
       </div>
 
-      {/* DEMO company not found */}
-      {!demoCompany && (
-        <div className="flex items-center gap-3 p-4 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-amber-700 dark:text-amber-400 text-sm">
-          <TriangleThunderbolt className="w-4 h-4 flex-shrink-0" />
-          No Demo Company found. Make sure a company named "DEMO" (or containing "demo") exists in Companies.
-        </div>
-      )}
-
-      {demoCompany && (
+      {source && (
         <>
-          {/* Source info */}
-          <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-violet-50 dark:bg-violet-500/10 border border-violet-100 dark:border-violet-500/20">
-            <div className="w-8 h-8 rounded-lg bg-violet-100 dark:bg-violet-500/20 flex items-center justify-center flex-shrink-0">
-              <IconCopy className="w-4 h-4 text-violet-600 dark:text-violet-400" />
-            </div>
-            <div className="text-sm">
-              <p className="font-semibold text-violet-800 dark:text-violet-300">
-                Source: {demoCompany.name}
-              </p>
-              <p className="text-violet-600/70 dark:text-violet-400/60 text-xs">
-                {demoTemplates.length} {COPY_SELECT_TYPES.find((t) => t.value === selectedSelectType)?.name || selectedSelectType} template{demoTemplates.length !== 1 ? "s" : ""} · {subtypeKeys.length} subtype{subtypeKeys.length !== 1 ? "s" : ""}
-              </p>
-            </div>
+          {/* Actual design types stored for this source company */}
+          <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl p-5 space-y-3">
+            <FieldLabel required>Design Type to Copy</FieldLabel>
+            {availableTypes.length === 0 ? (
+              <p className="text-sm text-gray-500">No MLM designs found in {source.name}.</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {availableTypes.map((t) => (
+                  <button
+                    key={t.value}
+                    type="button"
+                    onClick={() => {
+                      setSelectedSelectType(t.value);
+                      setCheckedSubtypes(new Set());
+                      setCopyResult(null);
+                      setShowConflictPopup(false);
+                    }}
+                    className={`px-4 py-2 rounded-xl text-sm font-semibold border transition-all ${
+                      selectedSelectType === t.value
+                        ? "bg-violet-600 text-white border-violet-600 shadow-lg shadow-violet-500/20"
+                        : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+                    }`}
+                  >
+                    {t.name}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* No templates in Demo */}
-          {demoTemplates.length === 0 && (
-            <div className="p-6 rounded-2xl border border-gray-100 dark:border-gray-800 text-center text-sm text-gray-400">
-              No {COPY_SELECT_TYPES.find((t) => t.value === selectedSelectType)?.name || selectedSelectType} templates found under {demoCompany.name}.
-            </div>
-          )}
-
+          {selectedSelectType && (
+            <>
+              <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-violet-50 dark:bg-violet-500/10 border border-violet-100 dark:border-violet-500/20">
+                <IconCopy className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+                <div className="text-sm">
+                  <p className="font-semibold text-violet-800 dark:text-violet-300">Source: {source.name}</p>
+                  <p className="text-violet-600/70 dark:text-violet-400/60 text-xs">
+                    {demoTemplates.length} designs · {subtypeKeys.length} subtypes
+                  </p>
+                </div>
+              </div>
+              {demoTemplates.length === 0 && (
+                <div className="p-6 rounded-2xl border border-gray-100 dark:border-gray-800 text-center text-sm text-gray-400">
+                  No designs in this category for {source.name}.
+                </div>
+              )}
           {/* Subtype checkboxes */}
           {subtypeKeys.length > 0 && (
             <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl p-5 space-y-4">
@@ -598,7 +608,7 @@ export default function CopyRankPromotion() {
                 <p className="text-xs text-gray-400">
                   {isAllCompaniesTarget ? (
                     <>
-                      Copies will be created under <span className="font-semibold text-violet-500">{targetName}</span>, excluding the Demo source company. Existing duplicates (same subtype + serial) are skipped automatically.
+                      Copies will be created under <span className="font-semibold text-violet-500">{targetName}</span>, excluding the source company. Existing duplicates (same subtype + serial) are skipped automatically.
                     </>
                   ) : (
                     <>
@@ -745,6 +755,8 @@ export default function CopyRankPromotion() {
                 )}
               </button>
             </div>
+          )}
+            </>
           )}
         </>
       )}
