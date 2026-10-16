@@ -1,0 +1,3 @@
+MLM LIVE Admin source: OCT16-TDZ-SAFE-V2
+Contains corrected initialization ordering in Add Template, Add Company, Add Graphics.
+This marker proves files from this package are deployed, not that remote functions or Firestore are healthy.

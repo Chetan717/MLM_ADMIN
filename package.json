@@ -8,7 +8,9 @@
     "build": "vite build",
     "lint": "eslint .",
     "test": "node --test tests/*.test.mjs",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "prebuild": "node tools/verify-add-forms.mjs",
+    "verify:add-forms": "node tools/verify-add-forms.mjs"
   },
   "overrides": {
     "protobufjs": "^8.6.3"

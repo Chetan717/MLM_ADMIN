@@ -26,7 +26,7 @@ test("R2 helper creates time-limited S3 PUT URL and stable public URL", () => {
   assert.equal(keyFromPublicUrl(config, `https://cdn.mlmlive.in/${key}`), key);
 });
 
-test("new template media uses R2 while Firebase Storage stays available to other Admin screens", async () => {
+test("all Admin image/video uploads use R2 only, without Firebase Storage fallback", async () => {
   const [add, edit, imageUploader, videoUploader, functions] = await Promise.all([
     read("src/Pages/Templates/Forms/AddTemplate.jsx"),
     read("src/Pages/Templates/Forms/EditTemplate.jsx"),
@@ -38,8 +38,11 @@ test("new template media uses R2 while Firebase Storage stays available to other
   assert.match(edit, /provider="r2"/);
   assert.match(add, /templates\/\$\{templateId\}/);
   assert.match(edit, /templates\/\$\{id\}/);
-  assert.match(imageUploader, /provider = "firebase"/);
-  assert.match(videoUploader, /provider = "firebase"/);
+  assert.match(imageUploader, /provider = "r2"/);
+  assert.match(imageUploader, /uploadTemplateAssetToR2/);
+  assert.match(videoUploader, /provider = "r2"/);
+  assert.match(videoUploader, /uploadTemplateAssetToR2/);
+  assert.match(functions, /exports\.panelCreateR2AdminMediaUpload/);
   assert.match(functions, /exports\.panelCreateR2TemplateUpload/);
   assert.match(functions, /exports\.panelRebuildTemplateCatalog/);
   assert.match(functions, /exports\.publishTemplateCatalogOnWrite/);

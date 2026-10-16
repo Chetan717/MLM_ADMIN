@@ -95,10 +95,10 @@ export default function AddTemplate() {
   const navigate = useNavigate();
   const [templateId] = useState(() => doc(collection(db, COLLECTIONS.MLMTEMPLATE)).id);
   const [form,    setForm]    = useState(FORM_DEFAULTS);
-  const unsavedGuard = useUnsavedFormGuard({ form, ready: true, saving: loading, saved: success });
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState(null);
   const [success, setSuccess] = useState(false);
+  const unsavedGuard = useUnsavedFormGuard({ form, ready: true, saving: loading, saved: success });
 
   const setField   = useCallback((key) => (val) => setForm((p) => ({ ...p, [key]: val })), []);
   const handleText = useCallback((key) => (e)   => setForm((p) => ({ ...p, [key]: e.target.value })), []);

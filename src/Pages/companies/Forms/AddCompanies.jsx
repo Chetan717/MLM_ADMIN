@@ -653,10 +653,10 @@ function PlansField({ items, onChange }) {
 export default function AddCompanies() {
   const navigate = useNavigate();
   const [form,    setForm]    = useState(INITIAL_STATE);
-  const unsavedGuard = useUnsavedFormGuard({ form, ready: true, saving: loading, saved: success });
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState(null);
   const [success, setSuccess] = useState(false);
+  const unsavedGuard = useUnsavedFormGuard({ form, ready: true, saving: loading, saved: success });
 
   const setField   = useCallback((key) => (value) => setForm((prev) => ({ ...prev, [key]: value })), []);
   const handleText = useCallback((key) => (e) => setForm((prev) => ({ ...prev, [key]: e.target.value })), []);
