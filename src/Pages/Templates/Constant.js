@@ -81,6 +81,7 @@ export const emptyGraphicsLink = () => ({
   nameImageUrl: "",
   rankNameImageUrl: "", // Rank Promotion variants only — image for the rank name
   bannerId: "",
+  badgeSize: "small", // Add Badge For Image size — Rank_Promotion only
   mute_footer: "", // Rank Promotion variants only — profile mute footer image
   mute_income: "", // Rank Promotion variants only — profile mute this-week income image
   trip_batch_image: "", // Rank Promotion variants only — trip batch image

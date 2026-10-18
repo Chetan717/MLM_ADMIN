@@ -284,6 +284,28 @@ export function GraphicsLinkRow({
                     provider={uploadProvider}
                     placeholder="Paste URL or click ↑ to upload"
                   />
+                  {selType === "Rank_Promotion" && (
+                    <div className="flex flex-col gap-1.5 mt-2">
+                      <FieldLabel>Badge Image Size</FieldLabel>
+                      <div className="relative">
+                        <select
+                          aria-label="Badge Image Size"
+                          value={
+                            item.badgeSize === "medium" || item.badgeSize === "big"
+                              ? item.badgeSize
+                              : "small"
+                          }
+                          onChange={(e) => update("badgeSize", e.target.value)}
+                          className={selectCls}
+                        >
+                          <option value="small">Small</option>
+                          <option value="medium">Medium</option>
+                          <option value="big">Big</option>
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
