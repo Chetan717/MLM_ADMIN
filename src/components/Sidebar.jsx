@@ -43,6 +43,7 @@ const TaskIcon = () => (
 );
 const DeleteRequestIcon = () => <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M9 3h6m-7 4h8l-1 14H9L8 7zm2 4v6m4-6v6"/></svg>;
 const BellIcon = () => <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2a2 2 0 01-.6 1.4L4 17h5m6 0a3 3 0 01-6 0"/></svg>;
+const ExpenseIcon = () => <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4h16v16H4V4zm0 5h16M8 15h4m-4 2h2"/></svg>;
 
 // ── Template-related tab IDs that give access to /templates ────────────────
 const TEMPLATE_TAB_IDS = ["templates", "templates_operation", "templates_quality", "templates_delete"];
@@ -60,6 +61,7 @@ const ALL_NAV_ITEMS = [
   { iconComponent: BarChartIcon, label: "Subscription Dashboard", id: "userdashboard", link: "/userdashboard" },
   { iconComponent: PersonIcon,   label: "User Leads",          id: "leads",           link: "/leads" },
   { iconComponent: ReportIcon,   label: "Template Data",       id: "templatedata",    link: "/templatedata" },
+  { iconComponent: ExpenseIcon,  label: "Expense Manager",     id: "expense",         link: "/expense", ownerOnly: true },
   { iconComponent: TaskIcon,     label: "Task Management",     id: "taskmanagement", link: "/taskmanagement" },
   { iconComponent: BellIcon,     label: "App Notifications",   id: "notifications", link: "/notifications" },
   { iconComponent: DeleteRequestIcon, label: "Delete Requests", id: "delete_requests", link: "/delete-requests", ownerOnly: true },

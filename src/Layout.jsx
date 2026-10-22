@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import Sidebar from "./components/Sidebar";
 import Header from "./components/Header";
+import { useLocation } from "react-router";
 
 const PAGE_LABELS = {
   dashboard:     "Dashboard",
@@ -21,14 +22,16 @@ const PAGE_LABELS = {
   leads:         "User Leads",
   templatedata:  "Template Data",
   adminmanagement: "Admin Management",
+  expense:       "Expense Manager",
   logout:        "Logout",
 };
 
 export default function Layout({ children }) {
+  const { pathname } = useLocation();
   const [collapsed,   setCollapsed]   = useState(false);
   const [mobileOpen,  setMobileOpen]  = useState(false);
   const [darkMode,    setDarkMode]    = useState(false);
-  const [active,      setActive]      = useState("dashboard");
+  const [active,      setActive]      = useState(() => pathname.startsWith("/expense") ? "expense" : "dashboard");
 
   // Toggle dark class on <html>
   useEffect(() => {

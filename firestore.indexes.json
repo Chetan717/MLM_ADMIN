@@ -7,5 +7,10 @@
     {"collectionGroup":"freshleads","queryScope":"COLLECTION","fields":[{"fieldPath":"mteamId","order":"ASCENDING"},{"fieldPath":"mobileNo","order":"ASCENDING"}]},
     {"collectionGroup":"Taskm","queryScope":"COLLECTION","fields":[{"fieldPath":"createdByMteamId","order":"ASCENDING"},{"fieldPath":"taskDate","order":"DESCENDING"}]}
   ],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    {"collectionGroup":"expense","fieldPath":"employees","indexes":[]},
+    {"collectionGroup":"expense","fieldPath":"expenses","indexes":[]},
+    {"collectionGroup":"expense","fieldPath":"salaries","indexes":[]},
+    {"collectionGroup":"expense","fieldPath":"expenseNames","indexes":[]}
+  ]
 }

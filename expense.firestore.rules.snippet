@@ -1,0 +1,19 @@
+// Insert ONLY this match block inside your EXISTING
+// match /databases/{database}/documents { ... } block.
+// This file is a snippet, not a replacement for your current Firestore rules.
+match /expense/expense {
+  allow get: if request.auth != null
+    && request.auth.token.panel == "admin"
+    && request.auth.token.role == "Master Admin";
+
+  allow create, update: if request.auth != null
+    && request.auth.token.panel == "admin"
+    && request.auth.token.role == "Master Admin"
+    && request.resource.data.schemaVersion == 1
+    && request.resource.data.revision is int
+    && request.resource.data.employees is map
+    && request.resource.data.expenses is map
+    && request.resource.data.salaries is map
+    && request.resource.data.expenseNames is map
+    && request.resource.data.updatedAt == request.time;
+}

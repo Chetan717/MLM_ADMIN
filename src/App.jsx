@@ -23,6 +23,9 @@ import SecuritySessions from "./Pages/SecuritySessions";
 import TaskManagement from "./Pages/TaskManagement/TaskManagement";
 import Notifications from "./Pages/Notifications/Notifications";
 import DeleteRequests from "./Pages/DeleteRequests";
+import { lazy, Suspense } from "react";
+
+const ExpenseManager = lazy(() => import("./Pages/ExpenseManager/ExpenseManager"));
 
 function App() {
   return (
@@ -71,6 +74,7 @@ function App() {
       <Route path="/taskmanagement" element={<ProtectedRoute><Layout><TaskManagement /></Layout></ProtectedRoute>} />
       <Route path="/notifications" element={<ProtectedRoute><Layout><Notifications /></Layout></ProtectedRoute>} />
       <Route path="/delete-requests" element={<ProtectedRoute><Layout><DeleteRequests /></Layout></ProtectedRoute>} />
+      <Route path="/expense" element={<ProtectedRoute><Layout><Suspense fallback={<div className="p-6">Loading Expense Manager…</div>}><ExpenseManager /></Suspense></Layout></ProtectedRoute>} />
 
       {/* ── Auth routes ── */}
       <Route path="/login"    element={<Login />} />
