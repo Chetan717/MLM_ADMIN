@@ -46,6 +46,7 @@ const {
   keyFromPublicUrl: r2KeyFromPublicUrl,
 } = require("./r2");
 const { normalizeR2TemplateUrl } = require("./templateCdnUrls");
+const { annotateSubtypeDates, buildPopupFeed } = require("./popupCatalog");
 
 initializeApp();
 const db = getFirestore();
@@ -682,19 +683,19 @@ async function canDeleteLegacyProfileKey(request, key) {
 const TEMPLATE_CATALOG_LOCK_REF = db.collection("_systemLocks").doc("templateCatalogR2");
 const delayMs = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function acquireTemplateCatalogLock(owner, { leaseMs = 120000, maxWaitMs = 240000 } = {}) {
+async function acquireTemplateCatalogLock(owner, { leaseMs = 120000, maxWaitMs = 240000, lockRef = TEMPLATE_CATALOG_LOCK_REF } = {}) {
   const deadline = Date.now() + maxWaitMs;
   let attempt = 0;
   while (Date.now() < deadline) {
     let acquired = false;
     const now = Date.now();
     await db.runTransaction(async (transaction) => {
-      const snapshot = await transaction.get(TEMPLATE_CATALOG_LOCK_REF);
+      const snapshot = await transaction.get(lockRef);
       const data = snapshot.exists ? snapshot.data() || {} : {};
       const leaseUntil = Number(data.leaseUntil?.toMillis?.() || 0);
       if (!snapshot.exists || leaseUntil <= now || data.owner === owner) {
         transaction.set(
-          TEMPLATE_CATALOG_LOCK_REF,
+          lockRef,
           {
             owner,
             leaseUntil: Timestamp.fromMillis(now + leaseMs),
@@ -712,11 +713,11 @@ async function acquireTemplateCatalogLock(owner, { leaseMs = 120000, maxWaitMs =
   throw new Error("Timed out waiting for the template CDN publish lock.");
 }
 
-async function releaseTemplateCatalogLock(owner) {
+async function releaseTemplateCatalogLock(owner, lockRef = TEMPLATE_CATALOG_LOCK_REF) {
   await db.runTransaction(async (transaction) => {
-    const snapshot = await transaction.get(TEMPLATE_CATALOG_LOCK_REF);
+    const snapshot = await transaction.get(lockRef);
     if (snapshot.exists && snapshot.data()?.owner === owner) {
-      transaction.delete(TEMPLATE_CATALOG_LOCK_REF);
+      transaction.delete(lockRef);
     }
   }).catch((error) => {
     console.warn("Template CDN publish lock release failed", error?.message || error);
@@ -729,7 +730,7 @@ async function withTemplateCatalogLock(work, options = {}) {
   try {
     return await work();
   } finally {
-    await releaseTemplateCatalogLock(owner);
+    await releaseTemplateCatalogLock(owner, options.lockRef);
   }
 }
 
@@ -786,13 +787,22 @@ function sortTemplates(items) {
     return diff || String(a?.id || "").localeCompare(String(b?.id || ""));
   });
 }
-function catalogPayload(items, extra = {}) {
+function catalogPayload(items, extra = {}, previousSubtypeDates = {}) {
   return {
     schema: TEMPLATE_CATALOG_SCHEMA,
     generatedAt: new Date().toISOString(),
     ...extra,
-    items: sortTemplates(items),
+    ...annotateSubtypeDates(sortTemplates(items), previousSubtypeDates),
   };
+}
+function homeSubtypeDates(items) {
+  const byType = {};
+  for (const row of items) {
+    const type = String(row.SelectType || row.type || "");
+    if (!byType[type]) byType[type] = [];
+    byType[type].push(row);
+  }
+  return Object.fromEntries(Object.entries(byType).map(([type, rows]) => [type, annotateSubtypeDates(rows).subtypeDates]));
 }
 async function putCatalogJson(key, payload, cacheControl = "public,max-age=300,stale-while-revalidate=86400") {
   await putR2Object(
@@ -859,7 +869,7 @@ async function rebuildTrendingGeneralDate(date) {
   await putCatalogJson(catalogKey.trendingGeneral(date), catalogPayload(items, { type: "Trending", date }));
 }
 async function rebuildHomeGeneral() {
-  const items = await templateQuery({ mainType: "General" });
+  const items = annotateSubtypeDates(await templateQuery({ mainType: "General" })).items;
   const types = {};
   const counts = {};
   for (const item of items) {
@@ -875,11 +885,12 @@ async function rebuildHomeGeneral() {
     limit: TEMPLATE_HOME_LIMIT,
     counts,
     types,
+    subtypeDates: homeSubtypeDates(items),
   });
 }
 async function rebuildHomeCompany(company) {
   if (!company) return;
-  const items = await templateQuery({ mainType: "MLM", company });
+  const items = annotateSubtypeDates(await templateQuery({ mainType: "MLM", company })).items;
   const grouped = {};
   const counts = {};
   for (const item of items) {
@@ -896,6 +907,7 @@ async function rebuildHomeCompany(company) {
     limit: TEMPLATE_HOME_LIMIT,
     counts,
     types: grouped,
+    subtypeDates: homeSubtypeDates(items),
   });
 }
 async function writeTemplateDetail(templateId, data) {
@@ -1051,8 +1063,9 @@ async function updateIncrementalBucket(descriptor, templateId, afterData) {
   const extra = { mainType: descriptor.mainType, type: descriptor.type };
   if (descriptor.company) extra.company = descriptor.company;
   if (descriptor.date) extra.date = descriptor.date;
-  await putCatalogJson(descriptor.key, catalogPayload(items, extra));
-  return items;
+  const payload = catalogPayload(items, extra, existing?.subtypeDates || {});
+  await putCatalogJson(descriptor.key, payload);
+  return payload.items;
 }
 
 async function updateHomeGeneralFromType(type, items) {
@@ -1069,6 +1082,7 @@ async function updateHomeGeneralFromType(type, items) {
     limit: TEMPLATE_HOME_LIMIT,
     counts,
     types,
+    subtypeDates: { ...(current.subtypeDates || {}), [type]: annotateSubtypeDates(items).subtypeDates },
   });
 }
 
@@ -1087,6 +1101,7 @@ async function updateHomeCompanyFromType(company, type, items) {
     limit: TEMPLATE_HOME_LIMIT,
     counts,
     types,
+    subtypeDates: { ...(current.subtypeDates || {}), [type]: annotateSubtypeDates(items).subtypeDates },
   });
 }
 
@@ -1228,10 +1243,10 @@ async function rebuildAffectedTemplateCatalog(beforeData, afterData) {
 }
 
 async function rebuildEntireTemplateCatalogFromSnapshot(snapshot) {
-  const visible = snapshot.docs
+  const visible = annotateSubtypeDates(snapshot.docs
     .map((document) => ({ id: document.id, data: document.data() }))
     .filter(({ data }) => isVisibleTemplate(data))
-    .map(({ id, data }) => serializeTemplate(id, data));
+    .map(({ id, data }) => serializeTemplate(id, data))).items;
 
   const generalGroups = new Map();
   const mlmGroups = new Map();
@@ -1308,6 +1323,7 @@ async function rebuildEntireTemplateCatalogFromSnapshot(snapshot) {
     limit: TEMPLATE_HOME_LIMIT,
     counts: homeGeneralCounts,
     types: homeGeneralTypes,
+    subtypeDates: homeSubtypeDates(visible.filter(item => item.MainType === "General")),
   }));
 
   const allGeneralItems = visible.filter(
@@ -1334,6 +1350,7 @@ async function rebuildEntireTemplateCatalogFromSnapshot(snapshot) {
       limit: TEMPLATE_HOME_LIMIT,
       counts,
       types: grouped,
+      subtypeDates: homeSubtypeDates(itemsRaw),
     }));
   }
 
@@ -3173,6 +3190,41 @@ exports.panelCreateR2AdminMediaUpload = onCall(
   { region: REGION, cors: true, secrets: R2_FUNCTION_SECRETS },
   async (request) => {
     await requireSession(request);
+    // Reuse the existing authenticated R2 handler. No new callable, trigger or
+    // scheduled function is added. App clients only GET the public CDN object.
+    if (request.data?.operation === "publishPopups") {
+      if (request.auth?.token?.panel !== "admin" || request.auth.token.role !== "Master Admin" || request.auth.token.actorType !== "owner") {
+        throw new HttpsError("permission-denied", "Only Master Admin can publish app popups.");
+      }
+      try {
+        return await withTemplateCatalogLock(async () => {
+          const popupRef = db.collection("popup").doc("popup");
+          const source = await popupRef.get();
+          if (!source.exists) throw new HttpsError("failed-precondition", "Save your popup settings first.");
+          const settings = source.data();
+          const templateIds = [...new Set(Object.values(settings.campaigns || {}).filter(row => row?.active && row.kind === "template" && (!row.endsAt || Date.parse(row.endsAt) > Date.now())).map(row => String(row.templateId || "")))];
+          if (templateIds.length > 40) throw new Error("Too many active template popups.");
+          const templates = new Map();
+          // Reads are admin-publish only, bounded by the number of selected
+          // templates. Never scan the whole template collection here.
+          await Promise.all(templateIds.map(async id => {
+            if (!/^[A-Za-z0-9_-]{1,128}$/.test(id)) throw new Error("Choose a valid template.");
+            const snapshot = await db.collection("mlmtemplate").doc(id).get();
+            if (snapshot.exists) templates.set(id, { ...serializeTemplate(snapshot.id, snapshot.data()), id: snapshot.id });
+          }));
+          const feed = buildPopupFeed(settings, templates);
+          await putCatalogJson("catalog/v1/popups.json", feed, "public,max-age=60,s-maxage=300,must-revalidate");
+          await db.runTransaction(async transaction => {
+            const latest = await transaction.get(popupRef);
+            if (latest.exists && latest.data().revision === feed.revision) transaction.update(popupRef, { publishedRevision: feed.revision, publishedAt: FieldValue.serverTimestamp() });
+          });
+          return { ok: true, revision: feed.revision, count: feed.items.length, publicUrl: r2PublicObjectUrl(r2Config(), "catalog/v1/popups.json") };
+        }, { lockRef: db.collection("_systemLocks").doc("popupCatalogR2"), leaseMs: 45000, maxWaitMs: 12000 });
+      } catch (error) {
+        if (error instanceof HttpsError) throw error;
+        throw new HttpsError("failed-precondition", error?.message || "Popup CDN publish failed. Your draft is saved; retry Publish.");
+      }
+    }
     const path = String(request.data?.storagePath || "").trim().replace(/^\/+|\/+$/g, "");
     const filename = String(request.data?.fileName || "").trim();
     const mime = String(request.data?.contentType || "").trim().toLowerCase();

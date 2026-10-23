@@ -62,6 +62,7 @@ const ALL_NAV_ITEMS = [
   { iconComponent: PersonIcon,   label: "User Leads",          id: "leads",           link: "/leads" },
   { iconComponent: ReportIcon,   label: "Template Data",       id: "templatedata",    link: "/templatedata" },
   { iconComponent: ExpenseIcon,  label: "Expense Manager",     id: "expense",         link: "/expense", ownerOnly: true },
+  { iconComponent: BellIcon,     label: "App Popups",          id: "popups",          link: "/popups", ownerOnly: true },
   { iconComponent: TaskIcon,     label: "Task Management",     id: "taskmanagement", link: "/taskmanagement" },
   { iconComponent: BellIcon,     label: "App Notifications",   id: "notifications", link: "/notifications" },
   { iconComponent: DeleteRequestIcon, label: "Delete Requests", id: "delete_requests", link: "/delete-requests", ownerOnly: true },

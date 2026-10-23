@@ -1,0 +1,20 @@
+// Add inside your EXISTING match /databases/{database}/documents { ... }.
+// This is a snippet, not a replacement for your current rules.
+match /popup/popup {
+  allow get: if request.auth != null
+    && request.auth.token.panel == "admin"
+    && request.auth.token.role == "Master Admin"
+    && request.auth.token.actorType == "owner";
+
+  allow create, update: if request.auth != null
+    && request.auth.token.panel == "admin"
+    && request.auth.token.role == "Master Admin"
+    && request.auth.token.actorType == "owner"
+    && request.resource.data.schemaVersion == 1
+    && request.resource.data.revision is int
+    && request.resource.data.campaigns is map
+    && request.resource.data.campaigns.size() <= 40
+    && request.resource.data.updatedAt == request.time;
+
+  allow list, delete: if false;
+}

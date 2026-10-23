@@ -11,6 +11,7 @@
     {"collectionGroup":"expense","fieldPath":"employees","indexes":[]},
     {"collectionGroup":"expense","fieldPath":"expenses","indexes":[]},
     {"collectionGroup":"expense","fieldPath":"salaries","indexes":[]},
-    {"collectionGroup":"expense","fieldPath":"expenseNames","indexes":[]}
+    {"collectionGroup":"expense","fieldPath":"expenseNames","indexes":[]},
+    {"collectionGroup":"popup","fieldPath":"campaigns","indexes":[]}
   ]
 }

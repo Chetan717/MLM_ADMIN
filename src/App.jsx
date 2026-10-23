@@ -26,6 +26,7 @@ import DeleteRequests from "./Pages/DeleteRequests";
 import { lazy, Suspense } from "react";
 
 const ExpenseManager = lazy(() => import("./Pages/ExpenseManager/ExpenseManager"));
+const PopupManagement = lazy(() => import("./Pages/Popups/PopupManagement"));
 
 function App() {
   return (
@@ -75,6 +76,7 @@ function App() {
       <Route path="/notifications" element={<ProtectedRoute><Layout><Notifications /></Layout></ProtectedRoute>} />
       <Route path="/delete-requests" element={<ProtectedRoute><Layout><DeleteRequests /></Layout></ProtectedRoute>} />
       <Route path="/expense" element={<ProtectedRoute><Layout><Suspense fallback={<div className="p-6">Loading Expense Manager…</div>}><ExpenseManager /></Suspense></Layout></ProtectedRoute>} />
+      <Route path="/popups" element={<ProtectedRoute><Layout><Suspense fallback={<div className="p-6">Loading App Popups…</div>}><PopupManagement /></Suspense></Layout></ProtectedRoute>} />
 
       {/* ── Auth routes ── */}
       <Route path="/login"    element={<Login />} />

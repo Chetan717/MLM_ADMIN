@@ -23,6 +23,7 @@ const PAGE_LABELS = {
   templatedata:  "Template Data",
   adminmanagement: "Admin Management",
   expense:       "Expense Manager",
+  popups:        "App Popups",
   logout:        "Logout",
 };
 
@@ -31,7 +32,7 @@ export default function Layout({ children }) {
   const [collapsed,   setCollapsed]   = useState(false);
   const [mobileOpen,  setMobileOpen]  = useState(false);
   const [darkMode,    setDarkMode]    = useState(false);
-  const [active,      setActive]      = useState(() => pathname.startsWith("/expense") ? "expense" : "dashboard");
+  const [active,      setActive]      = useState(() => pathname.startsWith("/popups") ? "popups" : pathname.startsWith("/expense") ? "expense" : "dashboard");
 
   // Toggle dark class on <html>
   useEffect(() => {
