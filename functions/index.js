@@ -5,6 +5,12 @@ const {
   onRequest,
   HttpsError,
 } = require("firebase-functions/v2/https");
+const {
+  normalizeNotificationImageUrl,
+  buildExpoPushMessage,
+  notificationPayloadError,
+  notificationImageUploadError,
+} = require("./pushNotificationModel");
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
@@ -3129,57 +3135,100 @@ exports.panelDeletePushCampaigns = onCall(
 );
 
 exports.panelSendPushNotification = onCall(
-  { region: REGION, cors: true, secrets: [EXPO_ACCESS_TOKEN] },
+  {
+    region: REGION,
+    cors: true,
+    secrets: [EXPO_ACCESS_TOKEN],
+  },
   async (request) => {
-    const { data: session } = await requireAssignedAdminTab(request, "notifications", "Notification access is required.");
+    const { data: session } = await requireAssignedAdminTab(
+      request,
+      "notifications",
+      "Notification access is required.",
+    );
+
     await rateLimit("admin_push_send", request.auth.uid, 20, 60 * 60 * 1000);
-    const title = cleanText(request.data?.title, 100),
-      body = cleanText(request.data?.body, 1000),
-      url = safeAppUrl(request.data?.url);
-    if (!title || !body || !url)
+
+    const title = cleanText(request.data?.title, 100);
+    const body = cleanText(request.data?.body, 1000);
+    const url = safeAppUrl(request.data?.url);
+
+    let imageUrl;
+
+    try {
+      imageUrl = normalizeNotificationImageUrl(request.data?.imageUrl);
+    } catch (error) {
+      throw new HttpsError("invalid-argument", error.message);
+    }
+
+    if (!title || !body || !url) {
       throw new HttpsError(
         "invalid-argument",
         "Enter a valid title, message and MLM LIVE page URL.",
       );
+    }
+
+    const payloadError = notificationPayloadError({
+      title,
+      body,
+      url,
+      imageUrl,
+    });
+
+    if (payloadError) {
+      throw new HttpsError("invalid-argument", payloadError);
+    }
+
     const snapshot = await db
       .collection("_expoPushDevices")
       .where("active", "==", true)
       .limit(10000)
       .get();
-    if (snapshot.empty)
+
+    if (snapshot.empty) {
       throw new HttpsError(
         "failed-precondition",
         "No app devices are registered yet.",
       );
+    }
+
     const messages = snapshot.docs
       .filter((doc) => validExpoPushToken(doc.data().token))
-      .map((doc) => ({
-        to: doc.data().token,
-        title,
-        body,
-        data: { url },
-        priority: "high",
-        sound: "default",
-        channelId: "default",
-      }));
-    const tickets = await sendExpoMessages(messages),
-      accepted = tickets.filter((ticket) => ticket.status === "ok").length,
-      rejected = tickets.length - accepted;
-    await db
-      .collection("_pushCampaigns")
-      .add({
-        title,
-        body,
-        url,
-        targeted: messages.length,
-        accepted,
-        rejected,
-        createdAt: FieldValue.serverTimestamp(),
-        createdByUid: request.auth.uid,
-        createdByName:
-          request.auth.token.name || session.actorName || "Master Admin",
-      });
-    return { targeted: messages.length, accepted, rejected };
+      .map((doc) =>
+        buildExpoPushMessage({
+          token: doc.data().token,
+          title,
+          body,
+          url,
+          imageUrl,
+        }),
+      );
+
+    const tickets = await sendExpoMessages(messages);
+
+    const accepted = tickets.filter((ticket) => ticket.status === "ok").length;
+
+    const rejected = tickets.length - accepted;
+
+    await db.collection("_pushCampaigns").add({
+      title,
+      body,
+      url,
+      ...(imageUrl ? { imageUrl } : {}),
+      targeted: messages.length,
+      accepted,
+      rejected,
+      createdAt: FieldValue.serverTimestamp(),
+      createdByUid: request.auth.uid,
+      createdByName:
+        request.auth.token.name || session.actorName || "Master Admin",
+    });
+
+    return {
+      targeted: messages.length,
+      accepted,
+      rejected,
+    };
   },
 );
 
@@ -3232,23 +3281,81 @@ exports.panelCreateR2AdminMediaUpload = onCall(
     const roleMaster = request.auth?.token?.actorType === "owner" && request.auth?.token?.role === "Master Admin";
     const tabs = Array.isArray(request.auth?.token?.tabs) ? request.auth.token.tabs.map(String) : [];
     const scope = path.split("/")[0];
-    const needed = scope === "templates" ? ["templates", "templates_operation"]
-      : scope === "companies" ? ["companies"]
-      : scope === "graphics" || scope === "music" ? ["graphics", "music"] : [];
-    if (!needed.length || (!roleMaster && !needed.some((t) => tabs.includes(t)))) {
-      throw new HttpsError("permission-denied", "This media section is not assigned to your admin account.");
-    }
-    if (!/^(?:templates|companies|graphics|music)\/[A-Za-z0-9_/-]{1,220}$/.test(path) || path.includes("..")) {
-      throw new HttpsError("invalid-argument", "Unsupported upload folder.");
-    }
-    if (!/^[A-Za-z0-9._-]{1,180}$/.test(filename) || filename.includes("..")) {
-      throw new HttpsError("invalid-argument", "Invalid filename.");
-    }
-    const allowed = mime === "image/webp" || /^video\/(mp4|webm|quicktime)$/.test(mime)
-      || /^audio\/(mpeg|mp3|mp4|wav|ogg|webm|aac|x-m4a)$/.test(mime);
-    if (!allowed) throw new HttpsError("invalid-argument", "Only WebP, supported video or audio allowed.");
-    const max = mime.startsWith("video/") ? 100 * 1024 * 1024 : mime.startsWith("audio/") ? 30 * 1024 * 1024 : 20 * 1024 * 1024;
-    if (!Number.isSafeInteger(size) || size < 1 || size > max) throw new HttpsError("invalid-argument", "Invalid upload size.");
+
+        const needed =
+          scope === "templates"
+            ? ["templates", "templates_operation"]
+            : scope === "companies"
+              ? ["companies"]
+              : scope === "notifications"
+                ? ["notifications"]
+                : scope === "graphics" || scope === "music"
+                  ? ["graphics", "music"]
+                  : [];
+
+        if (
+          !needed.length ||
+          (!roleMaster && !needed.some((tab) => tabs.includes(tab)))
+        ) {
+          throw new HttpsError(
+            "permission-denied",
+            "This media section is not assigned to your admin account.",
+          );
+        }
+
+        if (scope === "notifications") {
+          const imageError = notificationImageUploadError({
+            storagePath: path,
+            fileName: filename,
+            contentType: mime,
+            size,
+          });
+
+          if (imageError) {
+            throw new HttpsError("invalid-argument", imageError);
+          }
+        } else {
+          if (
+            !/^(?:templates|companies|graphics|music)\/[A-Za-z0-9_/-]{1,220}$/.test(
+              path,
+            ) ||
+            path.includes("..")
+          ) {
+            throw new HttpsError(
+              "invalid-argument",
+              "Unsupported upload folder.",
+            );
+          }
+
+          if (
+            !/^[A-Za-z0-9._-]{1,180}$/.test(filename) ||
+            filename.includes("..")
+          ) {
+            throw new HttpsError("invalid-argument", "Invalid filename.");
+          }
+
+          const allowed =
+            mime === "image/webp" ||
+            /^video\/(mp4|webm|quicktime)$/.test(mime) ||
+            /^audio\/(mpeg|mp3|mp4|wav|ogg|webm|aac|x-m4a)$/.test(mime);
+
+          if (!allowed) {
+            throw new HttpsError(
+              "invalid-argument",
+              "Only WebP, supported video or audio allowed.",
+            );
+          }
+
+          const max = mime.startsWith("video/")
+            ? 100 * 1024 * 1024
+            : mime.startsWith("audio/")
+              ? 30 * 1024 * 1024
+              : 20 * 1024 * 1024;
+
+          if (!Number.isSafeInteger(size) || size < 1 || size > max) {
+            throw new HttpsError("invalid-argument", "Invalid upload size.");
+          }
+        }
     const config = r2Config();
     const key = `${path}/${filename}`;
     return { ok: true, key, publicUrl: r2PublicObjectUrl(config,key), uploadUrl: createPresignedPutUrl(config,key,600,mime), expiresInSeconds:600 };
