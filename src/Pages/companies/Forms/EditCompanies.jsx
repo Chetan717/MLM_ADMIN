@@ -1,3 +1,5 @@
+import SearchableSelect from "../../../components/SearchableSelect.jsx";
+import { notifyAdminTabUpdates } from "../../../Utils/adminTabUpdates.js";
 import useUnsavedFormGuard from "../../../Utils/useUnsavedFormGuard";
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
@@ -182,7 +184,7 @@ function LinkArrayField({ label, items, onChange, storagePath }) {
             <div className="flex-1 flex flex-col gap-2">
               <ImageUploadInput value={item.link} onChange={(url) => handleFieldChange(item.id, "link", url)} storagePath={storagePath} placeholder="Paste URL or click ↑ to upload image" />
               <div className="relative">
-                <select
+                <SearchableSelect
                   value={item.size || ""}
                   onChange={(e) => handleFieldChange(item.id, "size", e.target.value)}
                   className={selectCls}
@@ -190,7 +192,7 @@ function LinkArrayField({ label, items, onChange, storagePath }) {
                   <option value="">Select size…</option>
                   <option value="rectangle">Rectangle</option>
                   <option value="square">Square</option>
-                </select>
+                </SearchableSelect>
                 <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               </div>
             </div>
@@ -463,10 +465,10 @@ function PlanRow({ plan, idx, total, onChange, onRemove }) {
             <div className="flex flex-col gap-1.5">
               <FieldLabel required>Duration</FieldLabel>
               <div className="relative">
-                <select value={plan.Duration} onChange={handleDurationChange} className={selectCls}>
+                <SearchableSelect sortOrder="original" value={plan.Duration} onChange={handleDurationChange} className={selectCls}>
                   <option value="">Select duration…</option>
                   {DURATION_OPTIONS.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
-                </select>
+                </SearchableSelect>
                 <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               </div>
               {plan.Day_value !== "" && <p className="text-[11px] text-gray-400 flex items-center gap-1"><span className="text-violet-500 font-medium">{plan.Day_value}</span> days stored in DB</p>}
@@ -474,10 +476,10 @@ function PlanRow({ plan, idx, total, onChange, onRemove }) {
             <div className="flex flex-col gap-1.5">
               <FieldLabel>Type</FieldLabel>
               <div className="relative">
-                <select value={plan.Type} onChange={(e) => update("Type", e.target.value)} className={selectCls}>
+                <SearchableSelect value={plan.Type} onChange={(e) => update("Type", e.target.value)} className={selectCls}>
                   <option value="">Select type…</option>
                   {PLAN_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                </select>
+                </SearchableSelect>
                 <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               </div>
             </div>
@@ -610,6 +612,7 @@ export default function EditCompanies() {
         updatedAt:  serverTimestamp(),
       });
       setSuccess(true);
+      notifyAdminTabUpdates('companies');
       setTimeout(() => navigate("/companies"), 1200);
     } catch (err) { console.error(err); setError("Failed to update company. Please try again."); }
     finally { setSaveLoading(false); }
@@ -623,6 +626,7 @@ export default function EditCompanies() {
       try {
         if (deleteRequestId) await httpsCallable(functions, "panelFinalizeApprovedDelete")({ requestId: deleteRequestId });
         else await deleteDoc(doc(db, "mlmcomp", id));
+        notifyAdminTabUpdates('companies');
         navigate("/companies");
       }
       catch (err) { console.error(err); setError("Delete failed."); setShowDelete(false); }

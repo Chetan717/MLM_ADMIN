@@ -1,3 +1,4 @@
+import SearchableSelect from "../../components/SearchableSelect.jsx";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   collection, getDocs, addDoc, updateDoc, deleteDoc,
@@ -180,13 +181,13 @@ function AdminModal({ mode, initial, onSave, onClose, saving }) {
           {/* Role */}
           <div>
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Role</label>
-            <select
+            <SearchableSelect
               value={form.role} onChange={e => set("role", e.target.value)}
               className={`w-full border rounded-xl px-3 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-violet-400 ${errors.role ? "border-red-400" : "border-gray-200"}`}
             >
               {hasLegacyRole && <option value={form.role}>{form.role} (Legacy — select a new role)</option>}
               {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-            </select>
+            </SearchableSelect>
             {errors.role && <p className="text-red-500 text-xs mt-1">{errors.role}</p>}
           </div>
 

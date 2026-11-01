@@ -1,3 +1,5 @@
+import SearchableSelect from "../../components/SearchableSelect.jsx";
+import { compareOptionLabels, searchText } from "../../components/selectOptions.js";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { getUser as _getAuthUser, VERIFIED_USER_CHANGED_EVENT } from "../../utils/authStorage";
 import { db, app } from "@firebase-config";
@@ -591,6 +593,7 @@ export default function MLMProfilePage() {
   const [deleting, setDeleting] = useState(false);
   const [confirmRemovePhoto, setConfirmRemovePhoto] = useState(null);
   const [rankPickerOpen, setRankPickerOpen] = useState(false);
+  const [rankSearch, setRankSearch] = useState("");
   const [manualRankInput, setManualRankInput] = useState("");
   const [bgProgressMsg, setBgProgressMsg] = useState("Please wait…");
   const [bgProgressPct, setBgProgressPct] = useState(0);
@@ -664,6 +667,8 @@ export default function MLMProfilePage() {
   const designations = Array.isArray(companyData?.profile)
     ? companyData.profile
     : [];
+  const visibleDesignations = designations.filter(designation => searchText(designation.profilename).includes(searchText(rankSearch)))
+    .sort((a, b) => compareOptionLabels(a.profilename, b.profilename));
   const isListedRank = designations.some(
     (designation) => designation.profilename === form.designation,
   );
@@ -878,6 +883,7 @@ export default function MLMProfilePage() {
 
   const openRankPicker = () => {
     setManualRankInput(isListedRank ? "" : form.designation);
+    setRankSearch("");
     setRankPickerOpen(true);
   };
 
@@ -1730,13 +1736,18 @@ export default function MLMProfilePage() {
                 <span className="h-px flex-1 bg-border" />
               </div>
 
+              <label className="mb-2 block text-xs text-muted-foreground">
+                  Search rank
+                  <input type="search" value={rankSearch} onChange={event => setRankSearch(event.target.value)}
+                    placeholder="Search rank by name…" className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" />
+              </label>
               <div
                 role="listbox"
                 aria-label="Rank list"
                 className="max-h-[48dvh] min-h-0 overflow-y-auto overscroll-contain rounded-xl border border-border divide-y divide-border"
               >
-                {designations.length > 0 ? (
-                  designations.map((designation) => {
+                {visibleDesignations.length > 0 ? (
+                  visibleDesignations.map((designation) => {
                     const selected =
                       designation.profilename === form.designation;
                     return (
@@ -1884,7 +1895,7 @@ export default function MLMProfilePage() {
                 Full Name <span className="text-red-500">*</span>
               </label>
               <div className="flex gap-2 mb-3">
-                <select
+                <SearchableSelect
                   value={form.salutation}
                   onChange={(e) => setField("salutation", e.target.value)}
                   className="border border-[#DDE3ED] rounded-[14px] px-3 py-2.5 text-[13px] bg-[#F1F4F9] text-foreground focus:outline-none focus:ring-2 focus:ring-accent/25 focus:border-[#2478EA] transition-all dark:border-border dark:bg-[#1A2236]"
@@ -1896,7 +1907,7 @@ export default function MLMProfilePage() {
                       {s}
                     </option>
                   ))}
-                </select>
+                </SearchableSelect>
                 <input
                   type="text"
                   placeholder="Enter name"

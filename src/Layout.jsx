@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import Sidebar from "./components/Sidebar";
 import Header from "./components/Header";
 import { useLocation } from "react-router";
+import { adminNavigationId } from "./Utils/adminPageState.js";
 
 const PAGE_LABELS = {
   dashboard:     "Dashboard",
@@ -24,6 +25,8 @@ const PAGE_LABELS = {
   adminmanagement: "Admin Management",
   expense:       "Expense Manager",
   popups:        "App Popups",
+  security:      "Login Activity",
+  delete_requests: "Delete Requests",
   logout:        "Logout",
 };
 
@@ -32,7 +35,7 @@ export default function Layout({ children }) {
   const [collapsed,   setCollapsed]   = useState(false);
   const [mobileOpen,  setMobileOpen]  = useState(false);
   const [darkMode,    setDarkMode]    = useState(false);
-  const [active,      setActive]      = useState(() => pathname.startsWith("/popups") ? "popups" : pathname.startsWith("/expense") ? "expense" : "dashboard");
+  const active = adminNavigationId(pathname);
 
   // Toggle dark class on <html>
   useEffect(() => {
@@ -55,7 +58,6 @@ export default function Layout({ children }) {
         mobileOpen={mobileOpen}
         setMobileOpen={setMobileOpen}
         active={active}
-        setActive={setActive}
       />
 
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">

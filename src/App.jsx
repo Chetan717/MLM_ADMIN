@@ -23,67 +23,58 @@ import SecuritySessions from "./Pages/SecuritySessions";
 import TaskManagement from "./Pages/TaskManagement/TaskManagement";
 import Notifications from "./Pages/Notifications/Notifications";
 import DeleteRequests from "./Pages/DeleteRequests";
-import { lazy, Suspense } from "react";
+import { lazy } from "react";
 
 const ExpenseManager = lazy(() => import("./Pages/ExpenseManager/ExpenseManager"));
 const PopupManagement = lazy(() => import("./Pages/Popups/PopupManagement"));
 
-function App() {
-  return (
+import { useAdminAuth } from "./Auth/AdminAuthContext";
+import { adminWorkspaceKey } from "./Utils/adminPageState.js";
+import { RetainedAdminRoutes } from "./components/RetainedAdminViews.jsx";
+
+const ADMIN_PAGES = [
+  { path: "/", element: <Home /> },
+  { path: "/companies", element: <CompaniesHome /> },
+  { path: "/templates", aliases: ["/dashboard"], element: <TemplateHome /> },
+  { path: "/graphics", element: <GraphiHome /> },
+  { path: "/marketing", element: <MainTeam /> },
+  { path: "/removebg", element: <Removebg /> },
+  { path: "/userdashboard", element: <UserDashboard /> },
+  { path: "/leads", element: <Leads /> },
+  { path: "/templatedata", element: <TemplateData /> },
+  { path: "/adminmanagement", element: <AdminManagement /> },
+  { path: "/security", element: <SecuritySessions /> },
+  { path: "/taskmanagement", element: <TaskManagement /> },
+  { path: "/notifications", element: <Notifications /> },
+  { path: "/delete-requests", element: <DeleteRequests /> },
+  { path: "/expense", element: <ExpenseManager /> },
+  { path: "/popups", element: <PopupManagement /> },
+];
+
+function AdminWorkspace() {
+  return <Layout><RetainedAdminRoutes pages={ADMIN_PAGES}>
     <Routes>
-      {/* ── Protected routes (with Sidebar + Header) ── */}
-      <Route path="/" element={<ProtectedRoute><Layout><Home /></Layout></ProtectedRoute>} />
-      <Route path="/dashboard" element={<ProtectedRoute><Layout><TemplateHome /></Layout></ProtectedRoute>} />
-
-      {/* Companies */}
-      <Route path="/companies"          element={<ProtectedRoute><Layout><CompaniesHome /></Layout></ProtectedRoute>} />
-      <Route path="/companies/add"      element={<ProtectedRoute><Layout><AddCompanies /></Layout></ProtectedRoute>} />
-      <Route path="/companies/edit/:id" element={<ProtectedRoute><Layout><EditCompanies /></Layout></ProtectedRoute>} />
-
-      {/* Templates */}
-      <Route path="/templates"          element={<ProtectedRoute><Layout><TemplateHome /></Layout></ProtectedRoute>} />
-      <Route path="/templates/add"                    element={<ProtectedRoute><Layout><AddTemplate /></Layout></ProtectedRoute>} />
-      <Route path="/templates/edit/:id"              element={<ProtectedRoute><Layout><EditTemplate /></Layout></ProtectedRoute>} />
-      <Route path="/templates/copy-rank-promotion"   element={<ProtectedRoute><Layout><CopyRankPromotion /></Layout></ProtectedRoute>} />
-
-      {/* Graphics */}
-      <Route path="/graphics"           element={<ProtectedRoute><Layout><GraphiHome /></Layout></ProtectedRoute>} />
-      <Route path="/graphics/add"       element={<ProtectedRoute><Layout><AddGraphics /></Layout></ProtectedRoute>} />
-      <Route path="/graphics/edit/:id"  element={<ProtectedRoute><Layout><EditGraphics /></Layout></ProtectedRoute>} />
-
-      {/* Marketing */}
-      <Route path="/marketing"          element={<ProtectedRoute><Layout><MainTeam /></Layout></ProtectedRoute>} />
-
-      {/* Remove BG */}
-      <Route path="/removebg"           element={<ProtectedRoute><Layout><Removebg /></Layout></ProtectedRoute>} />
-
-      {/* User Subscription Dashboard */}
-      <Route path="/userdashboard"      element={<ProtectedRoute><Layout><UserDashboard /></Layout></ProtectedRoute>} />
-
-      {/* Leads */}
-      <Route path="/leads"              element={<ProtectedRoute><Layout><Leads /></Layout></ProtectedRoute>} />
-
-      {/* Template Data Report */}
-      <Route path="/templatedata"       element={<ProtectedRoute><Layout><TemplateData /></Layout></ProtectedRoute>} />
-
-      {/* Admin Management */}
-      <Route path="/adminmanagement"    element={<ProtectedRoute><Layout>
-        <AdminManagement /></Layout></ProtectedRoute>} />
-      <Route path="/security" element={<ProtectedRoute><Layout><SecuritySessions /></Layout></ProtectedRoute>} />
-
-      {/* Marketing-to-Admin Tasks */}
-      <Route path="/taskmanagement" element={<ProtectedRoute><Layout><TaskManagement /></Layout></ProtectedRoute>} />
-      <Route path="/notifications" element={<ProtectedRoute><Layout><Notifications /></Layout></ProtectedRoute>} />
-      <Route path="/delete-requests" element={<ProtectedRoute><Layout><DeleteRequests /></Layout></ProtectedRoute>} />
-      <Route path="/expense" element={<ProtectedRoute><Layout><Suspense fallback={<div className="p-6">Loading Expense Manager…</div>}><ExpenseManager /></Suspense></Layout></ProtectedRoute>} />
-      <Route path="/popups" element={<ProtectedRoute><Layout><Suspense fallback={<div className="p-6">Loading App Popups…</div>}><PopupManagement /></Suspense></Layout></ProtectedRoute>} />
-
-      {/* ── Auth routes ── */}
-      <Route path="/login"    element={<Login />} />
-      <Route path="/signup" element={<Navigate to="/login" replace />} />
-      <Route path="/forgetpin" element={<Navigate to="/login" replace />} />
+      <Route path="/companies/add" element={<AddCompanies />} />
+      <Route path="/companies/edit/:id" element={<EditCompanies />} />
+      <Route path="/templates/add" element={<AddTemplate />} />
+      <Route path="/templates/edit/:id" element={<EditTemplate />} />
+      <Route path="/templates/copy-rank-promotion" element={<CopyRankPromotion />} />
+      <Route path="/graphics/add" element={<AddGraphics />} />
+      <Route path="/graphics/edit/:id" element={<EditGraphics />} />
     </Routes>
-  );
+  </RetainedAdminRoutes></Layout>;
 }
 
-export default App;
+function AuthenticatedWorkspace() {
+  const { session } = useAdminAuth();
+  return <ProtectedRoute><AdminWorkspace key={adminWorkspaceKey(session)} /></ProtectedRoute>;
+}
+
+export default function App() {
+  return <Routes>
+    <Route path="/login" element={<Login />} />
+    <Route path="/signup" element={<Navigate to="/login" replace />} />
+    <Route path="/forgetpin" element={<Navigate to="/login" replace />} />
+    <Route path="/*" element={<AuthenticatedWorkspace />} />
+  </Routes>;
+}

@@ -11,6 +11,7 @@ import ListOfCompanie from "./ListOfCompanie";
 import { db } from "../../../Firebase";
 import { COLLECTIONS } from "../../collections";
 import { useAdminDeleteGuard } from "../../Utils/AdminDeleteGuard";
+import { useAdminTabUpdates } from "../../Utils/adminTabUpdates.js";
 
 export default function CompaniesHome() {
   const navigate = useNavigate();
@@ -36,6 +37,7 @@ export default function CompaniesHome() {
       setLoading(false);
     }
   }, []);
+  useAdminTabUpdates('companies', fetchCompanies, fetched);
 
   // ── Delete ───────────────────────────────────────────────────────────────
   const { requestDelete, DeleteAuthModal, BlockedToast } = useAdminDeleteGuard();

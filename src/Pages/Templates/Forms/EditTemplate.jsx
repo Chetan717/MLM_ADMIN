@@ -1,3 +1,4 @@
+import SearchableSelect from "../../../components/SearchableSelect.jsx";
 import useUnsavedFormGuard from "../../../Utils/useUnsavedFormGuard";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
@@ -14,6 +15,7 @@ import ImageUploadInput from "../../../Utils/Imageuploadinput";
 import { useAdminDeleteGuard } from "../../../Utils/AdminDeleteGuard";
 import { getAdminSession } from "../../../Utils/adminSession";
 import { COLLECTIONS } from "../../../collections";
+import { rememberTemplateChange, rememberAdminRow } from "../../../Utils/adminTemplateReads";
 import {
   GraphicsLinksField,
   inputCls,
@@ -51,11 +53,11 @@ function SelectField({ label, value, onChange, options, placeholder, required, d
     <div className="flex flex-col gap-1.5">
       <FieldLabel required={required}>{label}</FieldLabel>
       <div className="relative">
-        <select value={value} onChange={onChange} required={required} disabled={disabled}
+        <SearchableSelect value={value} onChange={onChange} required={required} disabled={disabled}
           className={`${selectCls} ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}>
           <option value="">{placeholder || "Select…"}</option>
           {options.map((o) => <option key={o.value} value={o.value}>{o.name}</option>)}
-        </select>
+        </SearchableSelect>
         <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
       </div>
     </div>
@@ -354,17 +356,20 @@ export default function EditTemplate() {
       batch.update(doc(db, "mlmtemplate", id), {
         ...formData, serial: Number(formData.serial) || 0, GraphicsLink: cleanGraphics, updatedAt: serverTimestamp(),
       });
-      batch.set(doc(db, COLLECTIONS.TEMPLATEQUALITY, id), {
+      const qualityRecord = {
         templateId: id,
         recordType: "template",
         checks: reconciledChecks,
         updatedAt: serverTimestamp(),
-      });
+      };
+      batch.set(doc(db, COLLECTIONS.TEMPLATEQUALITY, id), qualityRecord);
 
+      let subtypeRecord = null, subtypeRecordId = null;
       if (markSubtypeChecked) {
         const subtypeKey = getSubtypeQualityKey(formData);
         const subtypeDocId = getSubtypeQualityDocId(subtypeKey);
-        batch.set(doc(db, COLLECTIONS.TEMPLATEQUALITY, subtypeDocId), {
+        subtypeRecordId = subtypeDocId;
+        subtypeRecord = {
           recordType: "subtype",
           subtypeKey,
           mainType: formData?.MainType || "",
@@ -373,10 +378,15 @@ export default function EditTemplate() {
           subtype: formData?.Subtype || "",
           checked: true,
           updatedAt: serverTimestamp(),
-        });
+        };
+        batch.set(doc(db, COLLECTIONS.TEMPLATEQUALITY, subtypeDocId), subtypeRecord);
       }
 
       await batch.commit();
+      rememberTemplateChange(id, { ...formData, serial: Number(formData.serial) || 0,
+        GraphicsLink: cleanGraphics, updatedAt: new Date() });
+      rememberAdminRow(COLLECTIONS.TEMPLATEQUALITY, id, { ...qualityRecord, updatedAt: new Date() });
+      if (subtypeRecord) rememberAdminRow(COLLECTIONS.TEMPLATEQUALITY, subtypeRecordId, { ...subtypeRecord, updatedAt: new Date() });
       setSuccess(true);
       setTimeout(() => navigate("/templates"), 1200);
     } catch (err) {
@@ -425,6 +435,8 @@ export default function EditTemplate() {
       try {
         if (deleteRequestId) await httpsCallable(functions, "panelFinalizeApprovedDelete")({ requestId: deleteRequestId });
         else await deleteDoc(doc(db, "mlmtemplate", id));
+        rememberTemplateChange(id, null);
+        rememberAdminRow(COLLECTIONS.TEMPLATEQUALITY, id, null);
         navigate("/templates");
       } catch (err) {
         console.error(err);
@@ -534,11 +546,11 @@ export default function EditTemplate() {
                 <div className="flex flex-col gap-1.5">
                   <FieldLabel>Company</FieldLabel>
                   <div className="relative">
-                    <select value={form.Company || ""} onChange={handleText("Company")} disabled={companiesLoading}
+                    <SearchableSelect value={form.Company || ""} onChange={handleText("Company")} disabled={companiesLoading}
                       className={`${selectCls} ${companiesLoading ? "opacity-60 cursor-not-allowed" : ""}`}>
                       <option value="">{companiesLoading ? "Loading companies…" : "Select company…"}</option>
                       {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
+                    </SearchableSelect>
                     <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                   </div>
                 </div>

@@ -12,10 +12,14 @@ const {
   notificationImageUploadError,
 } = require("./pushNotificationModel");
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
+const { createTemplateAssetCleanupQueue } = require("./templateAssetCleanupQueue");
+const { latestActorSession, sessionPage, validSessionCursor } = require("./panelSessionReads");
 const { initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
 const {
   FieldValue,
+  FieldPath,
   Timestamp,
   getFirestore,
 } = require("firebase-admin/firestore");
@@ -56,6 +60,7 @@ const { annotateSubtypeDates, buildPopupFeed } = require("./popupCatalog");
 
 initializeApp();
 const db = getFirestore();
+const templateAssetCleanupQueue = createTemplateAssetCleanupQueue({ db, Timestamp });
 const scrypt = promisify(crypto.scrypt);
 const EMAIL_PASS = defineSecret("EMAIL_PASS");
 const EXPO_ACCESS_TOKEN = defineSecret("EXPO_ACCESS_TOKEN");
@@ -961,27 +966,14 @@ function collectAnyR2TemplateKeys(value, keys = new Set()) {
 }
 
 async function cleanupRemovedR2TemplateAssets(templateId, beforeData, afterData) {
-  const beforeKeys = collectR2TemplateKeys(beforeData, templateId);
-  const afterKeys = collectR2TemplateKeys(afterData, templateId);
+  const beforeKeys = collectAnyR2TemplateKeys(beforeData);
+  const afterKeys = collectAnyR2TemplateKeys(afterData);
   const removedCandidates = [...beforeKeys].filter((key) => !afterKeys.has(key));
   if (!removedCandidates.length) return 0;
 
-  // Template copy operations can intentionally reuse the source template's
-  // CDN URLs. Before deleting a replaced/deleted object, make sure no other
-  // Firestore template still references it. This collection scan only happens
-  // on rare media replacement/deletion writes, never on normal user reads or
-  // normal Admin metadata edits.
-  const snapshot = await db.collection("mlmtemplate").get();
-  const referencedKeys = new Set();
-  for (const document of snapshot.docs) {
-    collectAnyR2TemplateKeys(document.data() || {}, referencedKeys);
-  }
-
-  const removed = removedCandidates.filter((key) => !referencedKeys.has(key));
-  await Promise.all(removed.map((key) => deleteR2Object(r2Config(), key).catch((error) => {
-    if (!String(error?.message || "").includes(" 404 ")) throw error;
-  })));
-  return removed.length;
+  // Defer physical deletion. The daily worker checks all shared references in
+  // one scan instead of downloading every template for every removed image.
+  return templateAssetCleanupQueue.enqueue("r2", removedCandidates, r2Config().bucket);
 }
 
 async function requireTemplateAdmin(request) {
@@ -1736,7 +1728,7 @@ exports.publishTemplateCatalogOnWrite = onDocumentWritten(
       const latestSnapshot = await db.collection("mlmtemplate").doc(templateId).get();
       const currentData = latestSnapshot.exists ? latestSnapshot.data() || {} : {};
 
-      const deletedR2Assets = beforeSnapshot?.exists
+      const queuedR2Assets = beforeSnapshot?.exists
         ? await cleanupRemovedR2TemplateAssets(templateId, beforeData, currentData)
         : 0;
 
@@ -1747,7 +1739,7 @@ exports.publishTemplateCatalogOnWrite = onDocumentWritten(
       if (!manifest?.version) {
         console.info("R2 template catalog waiting for initial full sync", {
           templateId,
-          deletedR2Assets,
+          queuedR2Assets,
         });
         return;
       }
@@ -1760,7 +1752,7 @@ exports.publishTemplateCatalogOnWrite = onDocumentWritten(
 
       console.info("R2 template catalog incremental publish complete", {
         templateId,
-        deletedR2Assets,
+        queuedR2Assets,
         version,
         deleted: !latestSnapshot.exists,
       });
@@ -1794,26 +1786,7 @@ exports.cleanupTemplateStorageOnWrite = onDocumentWritten(
       bucket.name,
     );
 
-    let deletedCount = 0;
-    let sharedCount = 0;
-
-    if (removedPaths.length) {
-      // A Storage URL can be intentionally reused. Scan the current template
-      // documents and delete only objects that have no remaining reference.
-      const currentTemplatesSnapshot = await db.collection("mlmtemplate").get();
-      const currentTemplates = currentTemplatesSnapshot.docs.map((document) =>
-        document.data(),
-      );
-      const unreferencedPaths = getUnreferencedTemplateStoragePaths(
-        removedPaths,
-        currentTemplates,
-        bucket.name,
-      );
-
-      await deleteTemplateStoragePaths(bucket, unreferencedPaths);
-      deletedCount = unreferencedPaths.length;
-      sharedCount = removedPaths.length - deletedCount;
-    }
+    const queuedCount = await templateAssetCleanupQueue.enqueue("storage", removedPaths, bucket.name);
 
     // The per-template quality document must not remain after full deletion.
     if (!afterSnapshot?.exists) {
@@ -1826,12 +1799,30 @@ exports.cleanupTemplateStorageOnWrite = onDocumentWritten(
     console.info("Template Storage cleanup complete", {
       templateId: event.params.templateId,
       removedReferences: removedPaths.length,
-      deletedObjects: deletedCount,
-      retainedSharedObjects: sharedCount,
+      queuedObjects: queuedCount,
       templateDeleted: !afterSnapshot?.exists,
     });
   },
 );
+
+// List/template updates remain immediate. Orphaned media is cleaned in one
+// daily batch after checking current references, including copied templates.
+exports.cleanupQueuedTemplateAssets = onSchedule({
+  schedule: "15 3 * * *", timeZone: "Asia/Kolkata",
+  region: TEMPLATE_STORAGE_CLEANUP_REGION, secrets: R2_FUNCTION_SECRETS,
+  timeoutSeconds: 540, memory: "512MiB", maxInstances: 1, concurrency: 1, retryCount: 0,
+}, async () => {
+  const bucket = getStorage().bucket(), config = r2Config();
+  const result = await templateAssetCleanupQueue.drain({
+    storageBucket: bucket.name, r2Bucket: config.bucket,
+    collectR2Keys: data => collectAnyR2TemplateKeys(data),
+    removeStorage: key => bucket.file(key).delete({ ignoreNotFound: true }),
+    removeR2: key => deleteR2Object(config, key).catch(error => {
+      if (!String(error?.message || "").includes(" 404 ")) throw error;
+    }),
+  });
+  console.info("Daily template asset cleanup", result);
+});
 
 // The deployed callable IDs stay unchanged so deploying this version safely
 // overwrites the old SMS implementation instead of leaving it active.
@@ -1891,15 +1882,8 @@ exports.panelCreateSessionFromTwoFactor = onCall(
       tabs,
     };
     const uid = `panel_${hash(`admin:${owner.id}:${actor.id}:${crypto.randomBytes(24).toString("hex")}`).slice(0, 48)}`;
-    const prior = await db
-      .collection("_panelSessions")
-      .where("ownerId", "==", owner.id)
-      .get();
-    const previous =
-      prior.docs
-        .map(sessionPublic)
-        .filter((s) => s.actorId === actor.id)
-        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0] || null;
+    const prior = await latestActorSession(db, owner.id, actor.id);
+    const previous = prior ? sessionPublic(prior) : null;
     const now = Timestamp.now(),
       expiresAt = Timestamp.fromMillis(Date.now() + SESSION_MS);
     await db
@@ -1961,18 +1945,14 @@ exports.panelListSessions = onCall(
   { region: REGION, cors: true },
   async (request) => {
     const { data } = await requireSession(request);
-    const snap = await db
-      .collection("_panelSessions")
-      .where("ownerId", "==", data.ownerId)
-      .get();
+    const cursor = request.data?.cursor;
+    if (cursor != null && !validSessionCursor(cursor)) throw new HttpsError("invalid-argument", "Invalid session page.");
     const all = request.auth.token.actorType === "owner";
+    const page = await sessionPage(db, { ownerId: data.ownerId, actorId: all ? null : data.actorId, cursor, Timestamp, FieldPath });
     return {
       currentSessionId: request.auth.uid,
-      sessions: snap.docs
-        .map(sessionPublic)
-        .filter((s) => all || s.actorId === data.actorId)
-        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
-        .slice(0, 100),
+      sessions: page.documents.map(sessionPublic),
+      nextCursor: page.nextCursor,
     };
   },
 );

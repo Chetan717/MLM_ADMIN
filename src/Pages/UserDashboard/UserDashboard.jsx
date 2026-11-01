@@ -1,3 +1,4 @@
+import SearchableSelect from "../../components/SearchableSelect.jsx";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../../../Firebase";
@@ -521,19 +522,19 @@ export default function UserSubscriptionDashboard() {
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Status</label>
-            <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }}
+            <SearchableSelect value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }}
               className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-violet-400">
               <option value="all">All Users</option>
               <option value="active">Active Only</option>
               <option value="expired">Expired Only</option>
-            </select>
+            </SearchableSelect>
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Company</label>
-            <select value={filterCompany} onChange={e => { setFilterCompany(e.target.value); setPage(1); }}
+            <SearchableSelect value={filterCompany} onChange={e => { setFilterCompany(e.target.value); setPage(1); }}
               className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-violet-400">
               {companyOptions.map(o => <option key={o} value={o}>{o === "all" ? "All Companies" : o}</option>)}
-            </select>
+            </SearchableSelect>
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Search</label>

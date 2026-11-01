@@ -1,3 +1,5 @@
+import SearchableSelect from "../../../components/SearchableSelect.jsx";
+import { notifyAdminTabUpdates } from "../../../Utils/adminTabUpdates.js";
 import useUnsavedFormGuard from "../../../Utils/useUnsavedFormGuard";
 import { useState, useCallback } from "react";
 import { useNavigate } from "react-router";
@@ -175,6 +177,7 @@ export default function AddGraphics() {
         updatedAt: serverTimestamp(),
       });
       setSuccess(true);
+      notifyAdminTabUpdates('graphics');
       setTimeout(() => navigate("/graphics"), 1200);
     } catch (err) {
       console.error(err);
@@ -239,7 +242,7 @@ export default function AddGraphics() {
           <div className="flex flex-col gap-1.5">
             <FieldLabel required>Graphics Type</FieldLabel>
             <div className="relative">
-              <select
+              <SearchableSelect
                 value={form.GraphicsType}
                 onChange={handleText("GraphicsType")}
                 required
@@ -249,7 +252,7 @@ export default function AddGraphics() {
                 {GRAPHICS_TYPES.map((t) => (
                   <option key={t} value={t}>{t}</option>
                 ))}
-              </select>
+              </SearchableSelect>
               <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             </div>
           </div>

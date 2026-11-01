@@ -41,10 +41,10 @@
 .em-filters { padding: 17px 20px; display: grid; grid-template-columns: 140px 170px 220px minmax(150px, 1fr); gap: 20px; background: var(--em-surface); border: 1px solid var(--em-border); border-radius: 12px; margin-bottom: 18px; box-shadow: var(--em-shadow); }
 .em-field { display: flex; flex-direction: column; min-width: 0; gap: 6px; }
 .em-field label { font-size: 12px; font-weight: 550; color: var(--em-text); }
-.em-field input, .em-field select, .em-field textarea { border: 1px solid var(--em-border); border-radius: 7px; padding: 9px 11px; font-size: 12px; width: 100%; color: var(--em-text); background: var(--em-surface); outline: none; font-family: inherit; line-height: 1.6; min-height: 39px; }
+.em-field input, .em-field :is(select,.admin-select-trigger), .em-field textarea { border: 1px solid var(--em-border); border-radius: 7px; padding: 9px 11px; font-size: 12px; width: 100%; color: var(--em-text); background: var(--em-surface); outline: none; font-family: inherit; line-height: 1.6; min-height: 39px; }
 .em-field input::placeholder, .em-field textarea::placeholder { color: var(--em-muted); }
-.em-field input:focus, .em-field select:focus, .em-field textarea:focus { border-color: var(--em-accent); box-shadow: 0 0 0 3px var(--em-accent-soft); }
-.em-field input:disabled, .em-field select:disabled, .em-field textarea:disabled { opacity: .65; background: var(--em-soft); }
+.em-field input:focus, .em-field :is(select,.admin-select-trigger):focus, .em-field textarea:focus { border-color: var(--em-accent); box-shadow: 0 0 0 3px var(--em-accent-soft); }
+.em-field input:disabled, .em-field :is(select,.admin-select-trigger):disabled, .em-field textarea:disabled { opacity: .65; background: var(--em-soft); }
 .em-field small { color: var(--em-muted); font-size: 11px; }
 .em-required { color: #ef4444; }
 .em-panel { border: 1px solid var(--em-border); background: var(--em-surface); border-radius: 12px; box-shadow: var(--em-shadow); overflow: hidden; margin-bottom: 18px; }

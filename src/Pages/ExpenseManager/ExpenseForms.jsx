@@ -102,7 +102,7 @@ export default function ExpenseForm({ kind, record, data, month, busy, onSave, o
           </>}
           {kind === "name" && <>
             {field("name", "Expense name", { required: true, maxLength: 100 })}{field("category", "Category", { required: true, maxLength: 60, list: "em-category-list", hint: "Choose a suggestion or type a custom category." })}
-            <datalist id="em-category-list">{CATEGORIES.filter(category => category !== "Salary").map(category => <option key={category} value={category} />)}</datalist>
+            <datalist id="em-category-list">{CATEGORIES.filter(category => category !== "Salary").sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base', numeric: true })).map(category => <option key={category} value={category} />)}</datalist>
             {field("defaultAmount", "Default amount (₹)", amountProps)}{field("vendor", "Default vendor")}
             {field("paymentMode", "Default payment mode", { options: PAYMENT_MODES })}{field("dueDay", "Monthly due day", { type: "number", min: 1, max: 31, step: 1 })}
             <label className="em-check em-field-wide"><input type="checkbox" checked={values.monthly} onChange={event => change("monthly", event.target.checked)} />Repeat as a monthly expense</label>

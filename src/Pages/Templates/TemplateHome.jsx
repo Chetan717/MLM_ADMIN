@@ -1,8 +1,8 @@
+import SearchableSelect from "../../components/SearchableSelect.jsx";
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router";
-import { collection, getDocs } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
-import { db, functions } from "../../../Firebase";
+import { functions } from "../../../Firebase";
 import {
   CirclePlus,
   ArrowRotateRight,
@@ -12,7 +12,6 @@ import {
   ChevronDown,
 } from "@gravity-ui/icons";
 import { MLM_SELECT_TYPES, GENERAL_SELECT_TYPES } from "./Constant";
-import { COLLECTIONS } from "../../collections";
 import TemplateTable from "./TemplateTable";
 import TemplateDetailPopup from "./TemplateDetailPopup";
 import QualityCheck from "./QualityCheck";
@@ -24,6 +23,8 @@ import {
 } from "./qualityUtils";
 import { getAdminSession } from "../../Utils/adminSession";
 import IssueFollowup from "./IssueFollowup";
+import { readAdminTemplates, readAdminCompanies, readAdminQuality } from "../../Utils/adminTemplateReads";
+import { useAdminTabUpdates } from "../../Utils/adminTabUpdates.js";
 
 const TEMPLATE_FILTER_STORAGE_KEY = "mlmlive.admin.template-filters.v1";
 
@@ -139,11 +140,10 @@ export default function TemplateHome() {
   }, [companies]);
 
   // ── Fetch quality docs ────────────────────────────────────────────────────
-  const fetchQuality = useCallback(async () => {
+  const fetchQuality = useCallback(async ({ force = false } = {}) => {
     setQualityLoading(true);
     try {
-      const snap = await getDocs(collection(db, COLLECTIONS.TEMPLATEQUALITY));
-      setQualityDocs(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      setQualityDocs(await readAdminQuality({ force }));
     } catch (err) {
       console.error("Quality fetch error:", err);
     } finally {
@@ -152,18 +152,17 @@ export default function TemplateHome() {
   }, []);
 
   // ── Fetch templates ───────────────────────────────────────────────────────
-  const fetchTemplates = useCallback(async () => {
+  const fetchTemplates = useCallback(async ({ force = false } = {}) => {
     setLoading(true);
     setError(null);
     try {
       setCompaniesLoading(true);
-      const [snap, companySnap] = await Promise.all([
-        getDocs(collection(db, COLLECTIONS.MLMTEMPLATE)),
-        getDocs(collection(db, COLLECTIONS.MLMCOMP)),
+      const [data, companyRows] = await Promise.all([
+        readAdminTemplates({ force }),
+        readAdminCompanies({ force }),
       ]);
-      const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       setAllTemplates(data);
-      setCompanies(companySnap.docs.map((d) => ({ id: d.id, name: d.data().name || d.id })));
+      setCompanies(companyRows.map(row => ({ id: row.id, name: row.name || row.id })));
       setFetched(true);
     } catch (err) {
       console.error(err);
@@ -178,6 +177,8 @@ export default function TemplateHome() {
     setQualityTemplate(null);
     fetchQuality();
   }, [fetchQuality]);
+  const syncSavedChanges = useCallback(async () => { await fetchTemplates(); await fetchQuality(); }, [fetchTemplates, fetchQuality]);
+  useAdminTabUpdates('templates', syncSavedChanges, fetched);
 
   // ── Quality status map: templateId → current OK / Issue counts ────────────
   const qualityStatusMap = useMemo(() => {
@@ -304,9 +305,9 @@ export default function TemplateHome() {
   }, [navigate]);
 
   const handleRefresh = useCallback(async () => {
-    await fetchTemplates();
-    await fetchQuality();
-  }, [fetchTemplates, fetchQuality]);
+    await fetchTemplates({ force: fetched });
+    await fetchQuality({ force: fetched });
+  }, [fetchTemplates, fetchQuality, fetched]);
 
   const handleRebuildCdn = useCallback(async () => {
     if (!canOperation || cdnSyncing) return;
@@ -474,7 +475,7 @@ export default function TemplateHome() {
 
             {/* SelectType filter — changes based on active tab */}
             <div className="relative">
-              <select
+              <SearchableSelect
                 value={filterSelectType}
                 onChange={(e) => handleFilterSelectType(e.target.value)}
                 className="pl-4 pr-9 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-violet-400/30 focus:border-violet-400 transition-all appearance-none cursor-pointer"
@@ -485,14 +486,14 @@ export default function TemplateHome() {
                 {selectTypeOptions.map((t) => (
                   <option key={t.value} value={t.value}>{t.name}</option>
                 ))}
-              </select>
+              </SearchableSelect>
               <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             </div>
 
             {/* Company filter — MLM tab only */}
             {activeTab === "MLM" && (
               <div className="relative">
-                <select
+                <SearchableSelect
                   value={filterCompany}
                   onChange={(e) => handleFilterCompany(e.target.value)}
                   disabled={companiesLoading}
@@ -502,7 +503,7 @@ export default function TemplateHome() {
                   {companies.map((c) => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
-                </select>
+                </SearchableSelect>
                 <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               </div>
             )}

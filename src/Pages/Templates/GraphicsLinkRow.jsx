@@ -1,3 +1,4 @@
+import SearchableSelect from "../../components/SearchableSelect.jsx";
 import { useState, useCallback } from "react";
 import {
   TrashBin,
@@ -288,7 +289,7 @@ export function GraphicsLinkRow({
                     <div className="flex flex-col gap-1.5 mt-2">
                       <FieldLabel>Badge Image Size</FieldLabel>
                       <div className="relative">
-                        <select
+                        <SearchableSelect sortOrder="original"
                           aria-label="Badge Image Size"
                           value={
                             item.badgeSize === "medium" || item.badgeSize === "big"
@@ -301,7 +302,7 @@ export function GraphicsLinkRow({
                           <option value="small">Small</option>
                           <option value="medium">Medium</option>
                           <option value="big">Big</option>
-                        </select>
+                        </SearchableSelect>
                         <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                       </div>
                     </div>
@@ -388,7 +389,7 @@ export function GraphicsLinkRow({
                 <div className="flex flex-col gap-1.5">
                   <FieldLabel>Image Placement</FieldLabel>
                   <div className="relative">
-                    <select
+                    <SearchableSelect
                       value={item.position || "left"}
                       onChange={(e) => update("position", e.target.value)}
                       className={selectCls}
@@ -398,7 +399,7 @@ export function GraphicsLinkRow({
                           {o.name}
                         </option>
                       ))}
-                    </select>
+                    </SearchableSelect>
                     <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                   </div>
                 </div>
@@ -420,7 +421,7 @@ export function GraphicsLinkRow({
                   )}
                 </FieldLabel>
                 <div className="relative">
-                  <select
+                  <SearchableSelect
                     value={item.Filter ?? "true"}
                     onChange={(e) => update("Filter", e.target.value)}
                     className={selectCls}
@@ -430,7 +431,7 @@ export function GraphicsLinkRow({
                         {opt.name}
                       </option>
                     ))}
-                  </select>
+                  </SearchableSelect>
                   <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 </div>
               </div>
@@ -439,14 +440,14 @@ export function GraphicsLinkRow({
               <div className="flex flex-col gap-1.5">
                 <FieldLabel>Status</FieldLabel>
                 <div className="relative">
-                  <select
+                  <SearchableSelect
                     value={item.active ?? "true"}
                     onChange={(e) => update("active", e.target.value)}
                     className={selectCls}
                   >
                     <option value="true">Show</option>
                     <option value="false">Hide</option>
-                  </select>
+                  </SearchableSelect>
                   <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 </div>
               </div>

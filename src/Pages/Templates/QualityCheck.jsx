@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { doc, getDoc, serverTimestamp, writeBatch } from "firebase/firestore";
+import { rememberAdminRow } from "../../Utils/adminTemplateReads";
 import { db } from "../../../Firebase";
 import { COLLECTIONS } from "../../collections";
 import {
@@ -230,13 +231,13 @@ export default function QualityCheck({ template, onClose }) {
       const currentChecks = reconcileQualityChecks(links, checks);
 
       const batch = writeBatch(db);
-      batch.set(doc(db, COLLECTIONS.TEMPLATEQUALITY, templateId), {
+      const qualityRecord = {
         templateId,
         recordType: "template",
         checks: currentChecks,
         updatedAt: serverTimestamp(),
-      });
-      batch.set(doc(db, COLLECTIONS.TEMPLATEQUALITY, subtypeDocId), {
+      };
+      const subtypeRecord = {
         recordType: "subtype",
         subtypeKey,
         mainType: template?.MainType || "",
@@ -245,8 +246,12 @@ export default function QualityCheck({ template, onClose }) {
         subtype: template?.Subtype || "",
         checked: subtypeChecked,
         updatedAt: serverTimestamp(),
-      });
+      };
+      batch.set(doc(db, COLLECTIONS.TEMPLATEQUALITY, templateId), qualityRecord);
+      batch.set(doc(db, COLLECTIONS.TEMPLATEQUALITY, subtypeDocId), subtypeRecord);
       await batch.commit();
+      rememberAdminRow(COLLECTIONS.TEMPLATEQUALITY, templateId, { ...qualityRecord, updatedAt: new Date() });
+      rememberAdminRow(COLLECTIONS.TEMPLATEQUALITY, subtypeDocId, { ...subtypeRecord, updatedAt: new Date() });
       setSaved(true);
       setTimeout(() => {
         setSaved(false);

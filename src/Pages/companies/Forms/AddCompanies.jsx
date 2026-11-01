@@ -1,3 +1,5 @@
+import SearchableSelect from "../../../components/SearchableSelect.jsx";
+import { notifyAdminTabUpdates } from "../../../Utils/adminTabUpdates.js";
 import useUnsavedFormGuard from "../../../Utils/useUnsavedFormGuard";
 import { useState, useCallback } from "react";
 import { useNavigate } from "react-router";
@@ -185,7 +187,7 @@ function LinkArrayField({ label, items, onChange, storagePath }) {
                 placeholder="Paste URL or click ↑ to upload image"
               />
               <div className="relative">
-                <select
+                <SearchableSelect
                   value={item.size || ""}
                   onChange={(e) => handleFieldChange(item.id, "size", e.target.value)}
                   className={selectCls}
@@ -193,7 +195,7 @@ function LinkArrayField({ label, items, onChange, storagePath }) {
                   <option value="">Select size…</option>
                   <option value="rectangle">Rectangle</option>
                   <option value="square">Square</option>
-                </select>
+                </SearchableSelect>
                 <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               </div>
             </div>
@@ -507,12 +509,12 @@ function PlanRow({ plan, idx, total, onChange, onRemove }) {
             <div className="flex flex-col gap-1.5">
               <FieldLabel required>Duration</FieldLabel>
               <div className="relative">
-                <select value={plan.Duration} onChange={handleDurationChange} className={selectCls}>
+                <SearchableSelect sortOrder="original" value={plan.Duration} onChange={handleDurationChange} className={selectCls}>
                   <option value="">Select duration…</option>
                   {DURATION_OPTIONS.map((d) => (
                     <option key={d.name} value={d.name}>{d.name}</option>
                   ))}
-                </select>
+                </SearchableSelect>
                 <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               </div>
               {plan.Day_value !== "" && (
@@ -525,12 +527,12 @@ function PlanRow({ plan, idx, total, onChange, onRemove }) {
             <div className="flex flex-col gap-1.5">
               <FieldLabel>Type</FieldLabel>
               <div className="relative">
-                <select value={plan.Type} onChange={(e) => update("Type", e.target.value)} className={selectCls}>
+                <SearchableSelect value={plan.Type} onChange={(e) => update("Type", e.target.value)} className={selectCls}>
                   <option value="">Select type…</option>
                   {PLAN_TYPES.map((t) => (
                     <option key={t} value={t}>{t}</option>
                   ))}
-                </select>
+                </SearchableSelect>
                 <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               </div>
             </div>
@@ -690,6 +692,7 @@ export default function AddCompanies() {
         updatedAt:   serverTimestamp(),
       });
       setSuccess(true);
+      notifyAdminTabUpdates('companies');
       setTimeout(() => navigate("/companies"), 1200);
     } catch (err) {
       console.error(err);

@@ -1,8 +1,8 @@
+import SearchableSelect from "../../components/SearchableSelect.jsx";
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { collection, getDocs } from "firebase/firestore";
 import * as XLSX from "xlsx";
-import { db } from "../../../Firebase";
-import { COLLECTIONS } from "../../collections";
+import { readAdminTemplates, readAdminCompanies, readAdminQuality } from "../../Utils/adminTemplateReads";
+import { useAdminTabUpdates } from "../../Utils/adminTabUpdates.js";
 import {
   getTemplateQualityCounts,
   getSubtypeQualityKey,
@@ -359,21 +359,23 @@ export default function TemplateData() {
   const [qualityDocs,  setQualityDocs]  = useState([]);
   const [companies,    setCompanies]    = useState([]);
   const [loading,      setLoading]      = useState(false);
+  const [fetched, setFetched] = useState(false);
 
   const [filterCompany, setFilterCompany] = useState("");
   const [filterType,    setFilterType]    = useState("");
 
-  const fetchAll = useCallback(async () => {
+  const fetchAll = useCallback(async ({ force = false } = {}) => {
     setLoading(true);
     try {
-      const [tSnap, qSnap, cSnap] = await Promise.all([
-        getDocs(collection(db, COLLECTIONS.MLMTEMPLATE)),
-        getDocs(collection(db, COLLECTIONS.TEMPLATEQUALITY)),
-        getDocs(collection(db, COLLECTIONS.MLMCOMP)),
+      const [templates, quality, companies] = await Promise.all([
+        readAdminTemplates({ force }),
+        readAdminQuality({ force }),
+        readAdminCompanies({ force }),
       ]);
-      setAllTemplates(tSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setQualityDocs(qSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setCompanies(cSnap.docs.map(d => ({ id: d.id, name: d.data().name || d.id })));
+      setAllTemplates(templates);
+      setQualityDocs(quality);
+      setCompanies(companies.map(row => ({ id: row.id, name: row.name || row.id })));
+      setFetched(true);
     } catch (err) {
       console.error(err);
     } finally {
@@ -381,6 +383,7 @@ export default function TemplateData() {
     }
   }, []);
 
+  useAdminTabUpdates('templatedata', fetchAll, fetched);
 
   const companiesMap = useMemo(() => {
     const m = {};
@@ -602,7 +605,7 @@ export default function TemplateData() {
             Download produces one sheet per MLM company + one GENERAL sheet
           </p>
         </div>
-        <button onClick={fetchAll} disabled={loading}
+        <button onClick={() => fetchAll({ force: fetched })} disabled={loading}
           className="flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-all disabled:opacity-60">
           <span className={loading ? "animate-spin" : ""}><IconRefresh /></span>
           {loading ? "Loading…" : allTemplates.length ? "Refresh" : "Fetch Template Data"}
@@ -671,18 +674,18 @@ export default function TemplateData() {
 
       {/* Filters + Download */}
       <div className="flex flex-wrap gap-3 items-center">
-        <select value={filterType} onChange={e => { setFilterType(e.target.value); setTPage(1); setCPage(1); setUPage(1); setIPage(1); }}
+        <SearchableSelect value={filterType} onChange={e => { setFilterType(e.target.value); setTPage(1); setCPage(1); setUPage(1); setIPage(1); }}
           className="pl-4 pr-9 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-violet-400/30 appearance-none cursor-pointer">
           <option value="">All Types</option>
           <option value="MLM">MLM Only</option>
           <option value="General">General Only</option>
-        </select>
+        </SearchableSelect>
 
-        <select value={filterCompany} onChange={e => { setFilterCompany(e.target.value); setTPage(1); setCPage(1); setUPage(1); setIPage(1); }}
+        <SearchableSelect value={filterCompany} onChange={e => { setFilterCompany(e.target.value); setTPage(1); setCPage(1); setUPage(1); setIPage(1); }}
           className="pl-4 pr-9 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-violet-400/30 appearance-none cursor-pointer">
           <option value="">All Companies</option>
           {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+        </SearchableSelect>
 
         {(filterType || filterCompany) && (
           <button onClick={() => { setFilterType(""); setFilterCompany(""); setTPage(1); setCPage(1); setUPage(1); setIPage(1); }}

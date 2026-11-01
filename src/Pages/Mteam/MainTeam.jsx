@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from "react";
 import MarketingTeam from "./Marketingteam";
 import CouponCodeManager from "./CouponCodeManager";
+import { RetainedAdminPanels } from "../../components/RetainedAdminViews.jsx";
 
 const TABS = [
   {
@@ -32,7 +33,7 @@ const TABS = [
 export default function MainTeam() {
   const [activeTab, setActiveTab] = useState(TABS[0].id);
   const handleTabChange = useCallback((id) => { setActiveTab(id); }, []);
-  const ActiveComponent = TABS.find((t) => t.id === activeTab)?.component;
+  const panels = TABS.map(tab => { const Component = tab.component; return { id: tab.id, element: <Component /> }; });
 
   return (
     <>
@@ -59,9 +60,7 @@ export default function MainTeam() {
             </button>
           ))}
         </nav>
-        <div key={activeTab} className="mt-panel">
-          {ActiveComponent && <ActiveComponent />}
-        </div>
+        <RetainedAdminPanels activeId={activeTab} panels={panels} className="mt-panel" />
       </div>
     </>
   );

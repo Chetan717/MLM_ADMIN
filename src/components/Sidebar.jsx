@@ -95,7 +95,7 @@ function getVisibleNavItems(admin) {
 export default function Sidebar({
   collapsed,
   mobileOpen, setMobileOpen,
-  active, setActive,
+  active,
 }) {
   const navigate  = useNavigate();
   const { logout } = useAdminAuth();
@@ -108,9 +108,8 @@ export default function Sidebar({
     navigate("/login");
   };
 
-  const hanClick = (id, link) => {
+  const hanClick = (link) => {
     if (!window.dispatchEvent(new CustomEvent("admin:route-request", { detail: { destination: link }, cancelable: true }))) return;
-    setActive(id);
     setMobileOpen(false);
     navigate(link);
   };
@@ -163,7 +162,7 @@ export default function Sidebar({
             return (
               <button
                 key={id}
-                onClick={() => hanClick(id, link)}
+                onClick={() => hanClick(link)}
                 className={[
                   "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group relative",
                   isActive

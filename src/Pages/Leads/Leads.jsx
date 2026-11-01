@@ -1,3 +1,4 @@
+import SearchableSelect from "../../components/SearchableSelect.jsx";
 import { useState, useCallback, useMemo } from "react";
 import { collection, getDocs, doc, setDoc, updateDoc, getDoc } from "firebase/firestore";
 import { db } from "../../../Firebase";
@@ -1087,28 +1088,28 @@ export default function Leads() {
           {/* Profile filter */}
           <div className="flex flex-col gap-1">
             <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">MLM Profile</label>
-            <select value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }}
+            <SearchableSelect value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }}
               className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-violet-400">
               <option value="all">All Users</option>
               <option value="withProfile">Has Profile</option>
               <option value="noProfile">No Profile</option>
-            </select>
+            </SearchableSelect>
           </div>
           {/* Plan filter */}
           <div className="flex flex-col gap-1">
             <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Plan Status</label>
-            <select value={filterPlan} onChange={e => { setFilterPlan(e.target.value); setPage(1); }}
+            <SearchableSelect value={filterPlan} onChange={e => { setFilterPlan(e.target.value); setPage(1); }}
               className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-violet-400">
               <option value="all">All</option>
               <option value="withPlan">Active Plan</option>
               <option value="noPlan">No Plan</option>
               <option value="expired">Expired (Need Renewal)</option>
-            </select>
+            </SearchableSelect>
           </div>
           {/* Expiry filter */}
           <div className="flex flex-col gap-1">
             <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Expiring In</label>
-            <select value={filterExpiry} onChange={e => { setFilterExpiry(e.target.value); setPage(1); }}
+            <SearchableSelect value={filterExpiry} onChange={e => { setFilterExpiry(e.target.value); setPage(1); }}
               className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-violet-400">
               <option value="all">Any Time</option>
               <option value="1day">1 Day</option>
@@ -1116,46 +1117,46 @@ export default function Leads() {
               <option value="3day">3 Days</option>
               <option value="7day">7 Days</option>
               <option value="15day">15 Days</option>
-            </select>
+            </SearchableSelect>
           </div>
           {/* Lead Status */}
           <div className="flex flex-col gap-1">
             <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Lead Status</label>
-            <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }}
+            <SearchableSelect value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }}
               className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-violet-400">
               <option value="all">All Statuses</option>
               {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
+            </SearchableSelect>
           </div>
           {/* Company filter */}
           <div className="flex flex-col gap-1">
             <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Company</label>
-            <select value={filterCompany} onChange={e => { setFilterCompany(e.target.value); setPage(1); }}
+            <SearchableSelect value={filterCompany} onChange={e => { setFilterCompany(e.target.value); setPage(1); }}
               className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-violet-400">
               <option value="all">All Companies</option>
               {companyOptions.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+            </SearchableSelect>
           </div>
           {/* Coupon filter */}
           <div className="flex flex-col gap-1">
             <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Coupon Code</label>
-            <select value={filterCoupon} onChange={e => { setFilterCoupon(e.target.value); setPage(1); }}
+            <SearchableSelect value={filterCoupon} onChange={e => { setFilterCoupon(e.target.value); setPage(1); }}
               className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-violet-400">
               <option value="all">All Coupons</option>
               <option value="none">No Coupon</option>
               {couponOptions.map(code => <option key={code} value={code}>{code}</option>)}
-            </select>
+            </SearchableSelect>
           </div>
           {/* Last Download activity filter */}
           <div className="flex flex-col gap-1">
             <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Last Download</label>
-            <select value={filterDownload} onChange={e => { setFilterDownload(e.target.value); setPage(1); }}
+            <SearchableSelect value={filterDownload} onChange={e => { setFilterDownload(e.target.value); setPage(1); }}
               className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-violet-400">
               <option value="all">All Users</option>
               <option value="downloaded">Downloaded in Range</option>
               <option value="notDownloaded">Not Downloaded in Range</option>
               <option value="never">Never Downloaded</option>
-            </select>
+            </SearchableSelect>
           </div>
         </div>
 

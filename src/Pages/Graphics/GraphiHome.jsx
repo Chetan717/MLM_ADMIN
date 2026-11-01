@@ -1,3 +1,6 @@
+import SearchableSelect from "../../components/SearchableSelect.jsx";
+import { RetainedAdminPanels } from "../../components/RetainedAdminViews.jsx";
+import { useAdminTabUpdates } from "../../Utils/adminTabUpdates.js";
 import { useState, useCallback, useMemo,useEffect } from "react";
 import { useNavigate } from "react-router";
 import { collection, getDocs, deleteDoc, doc } from "firebase/firestore";
@@ -259,6 +262,7 @@ export default function GraphiHome() {
     } finally { setLoading(false); }
   }, []);
 
+  useAdminTabUpdates('graphics', fetchGraphics, fetched);
   useEffect(() => {
         fetchGraphics()
       }, [fetchGraphics]);
@@ -374,7 +378,7 @@ export default function GraphiHome() {
       </div>
 
       {/* ── Music Tab ── */}
-      {activeTab === "music" && <MusicTab />}
+      <RetainedAdminPanels activeId={activeTab} panels={[{ id: "music", element: <MusicTab /> }]} />
 
       {/* ── Graphics Tab content ── */}
       {activeTab === "graphics" && (
@@ -431,7 +435,7 @@ export default function GraphiHome() {
 
                 {/* Type filter */}
                 <div className="relative">
-                  <select
+                  <SearchableSelect
                     value={filterType}
                     onChange={(e) => handleFilterType(e.target.value)}
                     className="pl-4 pr-9 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-violet-400/30 focus:border-violet-400 transition-all appearance-none cursor-pointer"
@@ -440,7 +444,7 @@ export default function GraphiHome() {
                     {GRAPHICS_TYPES.map((t) => (
                       <option key={t} value={t}>{t}</option>
                     ))}
-                  </select>
+                  </SearchableSelect>
                   <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 </div>
 

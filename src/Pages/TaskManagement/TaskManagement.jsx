@@ -1,3 +1,4 @@
+import SearchableSelect from "../../components/SearchableSelect.jsx";
 import { useEffect, useMemo, useState } from "react";
 import {
   addDoc,
@@ -198,20 +199,20 @@ function TaskFormModal({
           <div className="grid sm:grid-cols-2 gap-4">
             <label className="space-y-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
               Status
-              <select value={form.status} onChange={(event) => set("status", event.target.value)} className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-800 dark:text-gray-200 normal-case font-normal">
+              <SearchableSelect value={form.status} onChange={(event) => set("status", event.target.value)} className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-800 dark:text-gray-200 normal-case font-normal">
                 {STATUSES.map((status) => <option key={status}>{status}</option>)}
-              </select>
+              </SearchableSelect>
             </label>
             <label className="space-y-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
               Assigned Role
-              <select
+              <SearchableSelect
                 value={form.assignedRoleKey}
                 disabled={!canReassign}
                 onChange={(event) => set("assignedRoleKey", event.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-800 dark:text-gray-200 normal-case font-normal disabled:opacity-70 disabled:cursor-not-allowed"
               >
                 {TASK_ROLE_OPTIONS.map((role) => <option key={role.key} value={role.key}>{role.label}</option>)}
-              </select>
+              </SearchableSelect>
             </label>
           </div>
           <label className="space-y-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wide block">
@@ -545,11 +546,11 @@ export default function TaskManagement() {
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><IconSearch /></span>
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search task, company, member or role…" className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-200" />
           </div>
-          <select value={status} onChange={(event) => setStatus(event.target.value)} className="px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-200">
+          <SearchableSelect value={status} onChange={(event) => setStatus(event.target.value)} className="px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-200">
             <option value="">All Statuses</option>
             {STATUSES.map((item) => <option key={item}>{item}</option>)}
-          </select>
-          <select
+          </SearchableSelect>
+          <SearchableSelect
             aria-label="Filter by assigned role"
             value={roleFilter}
             onChange={(event) => setRoleFilter(event.target.value)}
@@ -557,7 +558,7 @@ export default function TaskManagement() {
           >
             <option value="">All Visible Roles</option>
             {TASK_ROLE_OPTIONS.map((role) => <option key={role.key} value={role.key}>{role.label}</option>)}
-          </select>
+          </SearchableSelect>
           <input type="date" aria-label="From date" value={dateFrom} max={dateTo || undefined} onChange={(event) => setDateFrom(event.target.value)} className="px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-200" />
           <input type="date" aria-label="To date" value={dateTo} min={dateFrom || undefined} onChange={(event) => setDateTo(event.target.value)} className="px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-200" />
           <button type="button" onClick={clearFilters} className="px-3 py-2.5 rounded-xl text-sm font-semibold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">Clear</button>
@@ -612,9 +613,9 @@ export default function TaskManagement() {
                       </p>
                     </td>
                     <td className="px-4 py-3">
-                      <select value={STATUSES.includes(task.status) ? task.status : "Initiated"} onChange={(event) => updateStatus(task, event.target.value)} className={`px-2.5 py-1.5 rounded-full border text-xs font-semibold outline-none ${STATUS_STYLE[task.status] || STATUS_STYLE.Initiated}`}>
+                      <SearchableSelect value={STATUSES.includes(task.status) ? task.status : "Initiated"} onChange={(event) => updateStatus(task, event.target.value)} className={`px-2.5 py-1.5 rounded-full border text-xs font-semibold outline-none ${STATUS_STYLE[task.status] || STATUS_STYLE.Initiated}`}>
                         {STATUSES.map((item) => <option key={item}>{item}</option>)}
-                      </select>
+                      </SearchableSelect>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
@@ -634,9 +635,9 @@ export default function TaskManagement() {
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
           <label className="flex items-center gap-2 text-xs text-gray-400">
             Rows per page
-            <select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))} className="px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
+            <SearchableSelect value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))} className="px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
               {PAGE_SIZES.map((size) => <option key={size}>{size}</option>)}
-            </select>
+            </SearchableSelect>
           </label>
           <Pagination page={page} totalPages={totalPages} onChange={setPage} />
           <p className="text-xs text-gray-400">Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, filtered.length)} of {filtered.length}</p>

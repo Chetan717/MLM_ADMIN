@@ -1,3 +1,4 @@
+import SearchableSelect from "../../../components/SearchableSelect.jsx";
 import useUnsavedFormGuard from "../../../Utils/useUnsavedFormGuard";
 import { useState, useCallback, useMemo , useEffect } from "react";
 import { useNavigate } from "react-router";
@@ -8,6 +9,7 @@ import {
 } from "@gravity-ui/icons";
 import ImageUploadInput from "../../../Utils/Imageuploadinput";
 import { COLLECTIONS } from "../../../collections";
+import { rememberTemplateChange } from "../../../Utils/adminTemplateReads";
 import {
   GraphicsLinksField,
   inputCls,
@@ -38,11 +40,11 @@ function SelectField({ label, value, onChange, options, placeholder, required, d
     <div className="flex flex-col gap-1.5">
       <FieldLabel required={required}>{label}</FieldLabel>
       <div className="relative">
-        <select value={value} onChange={onChange} required={required} disabled={disabled}
+        <SearchableSelect value={value} onChange={onChange} required={required} disabled={disabled}
           className={`${selectCls} ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}>
           <option value="">{placeholder || "Select…"}</option>
           {options.map((o) => <option key={o.value} value={o.value}>{o.name}</option>)}
-        </select>
+        </SearchableSelect>
         <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
       </div>
     </div>
@@ -150,6 +152,8 @@ export default function AddTemplate() {
         ...form, serial: Number(form.serial) || 0, GraphicsLink: cleanGraphics,
         createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
       });
+      rememberTemplateChange(templateId, { ...form, serial: Number(form.serial) || 0, GraphicsLink: cleanGraphics,
+        createdAt: new Date(), updatedAt: new Date() });
       setSuccess(true);
       setTimeout(() => navigate("/templates"), 1200);
     } catch (err) {
@@ -198,7 +202,7 @@ export default function AddTemplate() {
             <div className="flex flex-col gap-1.5">
               <FieldLabel>Company</FieldLabel>
               <div className="relative">
-                <select
+                <SearchableSelect
                   value={form.Company || ""}
                   onChange={handleText("Company")}
                   disabled={companiesLoading}
@@ -210,7 +214,7 @@ export default function AddTemplate() {
                   {companies.map((c) => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
-                </select>
+                </SearchableSelect>
                 <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               </div>
               {companiesLoading && (

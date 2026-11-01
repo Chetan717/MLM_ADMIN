@@ -1,0 +1,96 @@
+{
+  "dropdowns": 52,
+  "files": [
+    {
+      "file": "src/Pages/AdminManagement/AdminManagement.jsx",
+      "dropdowns": 1
+    },
+    {
+      "file": "src/Pages/ExpenseManager/ExpenseManager.jsx",
+      "dropdowns": 3
+    },
+    {
+      "file": "src/Pages/ExpenseManager/ExpenseUI.jsx",
+      "dropdowns": 1
+    },
+    {
+      "file": "src/Pages/Form/Mlmprofilemodal.jsx",
+      "dropdowns": 1
+    },
+    {
+      "file": "src/Pages/Graphics/Form/AddGraphics.jsx",
+      "dropdowns": 1
+    },
+    {
+      "file": "src/Pages/Graphics/Form/EditGraphics.jsx",
+      "dropdowns": 1
+    },
+    {
+      "file": "src/Pages/Graphics/GraphiHome.jsx",
+      "dropdowns": 1
+    },
+    {
+      "file": "src/Pages/Leads/Leads.jsx",
+      "dropdowns": 7
+    },
+    {
+      "file": "src/Pages/Mteam/CouponCodeManager.jsx",
+      "dropdowns": 1
+    },
+    {
+      "file": "src/Pages/Mteam/Marketingteam.jsx",
+      "dropdowns": 1
+    },
+    {
+      "file": "src/Pages/Popups/PopupManagement.jsx",
+      "dropdowns": 5
+    },
+    {
+      "file": "src/Pages/TaskManagement/TaskManagement.jsx",
+      "dropdowns": 6
+    },
+    {
+      "file": "src/Pages/Templates/Forms/AddTemplate.jsx",
+      "dropdowns": 2
+    },
+    {
+      "file": "src/Pages/Templates/Forms/CopyRankPromotion.jsx",
+      "dropdowns": 2
+    },
+    {
+      "file": "src/Pages/Templates/Forms/EditTemplate.jsx",
+      "dropdowns": 2
+    },
+    {
+      "file": "src/Pages/Templates/GraphicsLinkRow.jsx",
+      "dropdowns": 4
+    },
+    {
+      "file": "src/Pages/Templates/IssueFollowup.jsx",
+      "dropdowns": 1
+    },
+    {
+      "file": "src/Pages/Templates/TemplateData.jsx",
+      "dropdowns": 2
+    },
+    {
+      "file": "src/Pages/Templates/TemplateHome.jsx",
+      "dropdowns": 2
+    },
+    {
+      "file": "src/Pages/UserDashboard/UserDashboard.jsx",
+      "dropdowns": 2
+    },
+    {
+      "file": "src/Pages/companies/Forms/AddCompanies.jsx",
+      "dropdowns": 3
+    },
+    {
+      "file": "src/Pages/companies/Forms/EditCompanies.jsx",
+      "dropdowns": 3
+    }
+  ],
+  "unit_tests_passed": 121,
+  "dom_ui_tests_passed": 12,
+  "retained_sidebar_pages": 16
+}

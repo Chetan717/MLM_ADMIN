@@ -1,3 +1,4 @@
+import SearchableSelect from "../../components/SearchableSelect.jsx";
 import { memo, useState, useMemo, useCallback } from "react";
 
 const PAGE_SIZE = 10;
@@ -268,7 +269,7 @@ export default function IssueFollowup({ items, onFix, loading, companies = {} })
               />
             </div>
             {companyOptions.length > 0 && (
-              <select
+              <SearchableSelect
                 value={filterCompany}
                 onChange={handleCompany}
                 className="pl-3 pr-8 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-red-300/40 focus:border-red-400 transition-all appearance-none cursor-pointer"
@@ -277,7 +278,7 @@ export default function IssueFollowup({ items, onFix, loading, companies = {} })
                 {companyOptions.map(c => (
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
-              </select>
+              </SearchableSelect>
             )}
             <span className="text-xs text-gray-400 self-center flex-shrink-0">
               {filtered.length} result{filtered.length !== 1 ? "s" : ""}

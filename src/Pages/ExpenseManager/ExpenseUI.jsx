@@ -1,5 +1,7 @@
+import SearchableSelect from "../../components/SearchableSelect.jsx";
 import { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
+import { useActiveAdminTab } from "../../Context/AdminTabContext.js";
 
 const PATHS = {
   plus: "M12 5v14m-7-7h14", close: "m6 6 12 12M6 18 18 6",
@@ -35,15 +37,17 @@ export function RowActions({ onEdit, onDelete, editLabel = "Edit", disabled }) {
 }
 
 export function Modal({ title, description, onClose, busy = false, wide = false, children }) {
+  const pageVisible = useActiveAdminTab();
   const headingId = useId();
   const container = useRef(null);
   const actions = useRef({ onClose, busy });
   useEffect(() => { actions.current = { onClose, busy }; }, [onClose, busy]);
   useEffect(() => {
+    if (!pageVisible) return;
     const previous = document.activeElement;
     const element = container.current;
-    const selector = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex="0"]';
-    const firstInput = element.querySelector('input:not([disabled]), select:not([disabled]), textarea:not([disabled])');
+    const selector = 'button:not([disabled]), input:not([disabled]), select:not([disabled]):not([aria-hidden="true"]), textarea:not([disabled]), [tabindex="0"]';
+    const firstInput = element.querySelector('input:not([disabled]), .admin-select-trigger:not([disabled]), select:not([disabled]):not([aria-hidden="true"]), textarea:not([disabled])');
     (firstInput || element.querySelector(selector) || element).focus();
     const keydown = event => {
       if (event.key === "Escape") { event.preventDefault(); if (!actions.current.busy) actions.current.onClose(); }
@@ -55,8 +59,9 @@ export function Modal({ title, description, onClose, busy = false, wide = false,
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     };
     document.addEventListener("keydown", keydown);
-    return () => { document.removeEventListener("keydown", keydown); if (previous?.isConnected) previous.focus(); };
-  }, []);
+    return () => { document.removeEventListener("keydown", keydown); if (previous?.isConnected && previous.getClientRects().length) previous.focus(); };
+  }, [pageVisible]);
+  if (!pageVisible) return null;
   return createPortal(<div className="expense-manager em-modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget && !busy) onClose(); }}>
     <section ref={container} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={headingId} className={`em-modal ${wide ? "em-modal-wide" : ""}`}>
       <div className="em-modal-heading"><div><h2 id={headingId}>{title}</h2>{description && <p>{description}</p>}</div><button type="button" className="em-icon-button" aria-label="Close dialog" disabled={busy} onClick={onClose}><Icon name="close" /></button></div>
@@ -69,7 +74,7 @@ export function Field({ label, name, values, onChange, options, span = false, hi
   const id = useId();
   const input = { id, name, value: values[name] ?? "", onChange: event => onChange(name, event.target.value), ...props };
   return <div className={`em-field ${span ? "em-field-wide" : ""}`}><label htmlFor={id}>{label}{props.required && <span className="em-required"> *</span>}</label>
-    {options ? <select {...input}>{options.map(option => { const value = typeof option === "object" ? option.value : option; const text = typeof option === "object" ? option.label : option; return <option key={value} value={value}>{text}</option>; })}</select>
+    {options ? <SearchableSelect {...input}>{options.map(option => { const value = typeof option === "object" ? option.value : option; const text = typeof option === "object" ? option.label : option; return <option key={value} value={value}>{text}</option>; })}</SearchableSelect>
       : props.as === "textarea" ? <textarea {...input} as={undefined} rows={3} /> : <input {...input} />}
     {hint && <small>{hint}</small>}
   </div>;

@@ -15,7 +15,7 @@ test("push registration and Master Admin send functions are exported", () => {
 });
 
 test("notification navigation is visible only to the owner UI", () => {
-  assert.match(appSource, /path="\/notifications"/);
+  assert.match(appSource, /path(?:=|:\s*)["']\/notifications["']/);
   assert.match(sidebarSource, /id: "notifications"[\s\S]*ownerOnly: true/);
   assert.match(sidebarSource, /if \(item\.ownerOnly\) return false/);
 });

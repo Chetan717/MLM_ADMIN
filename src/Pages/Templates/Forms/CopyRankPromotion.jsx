@@ -1,3 +1,4 @@
+import SearchableSelect from "../../../components/SearchableSelect.jsx";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router";
 import {
@@ -5,6 +6,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../../../../Firebase";
 import { COLLECTIONS } from "../../../collections";
+import { readAdminCompanies, readAdminTemplates, rememberTemplateChange } from "../../../Utils/adminTemplateReads";
 import {
   ArrowLeft,
   CircleCheck,
@@ -65,24 +67,15 @@ export default function CopyRankPromotion() {
     let cancelled = false;
     (async () => {
       try {
-        const [compSnap, tplSnap] = await Promise.all([
-          getDocs(collection(db, COLLECTIONS.MLMCOMP)),
-          getDocs(collection(db, COLLECTIONS.MLMTEMPLATE)),
-        ]);
+        const companyRows = await readAdminCompanies();
 
         if (cancelled) return;
 
-        const allCompanies = compSnap.docs.map((d) => ({
-          id: d.id,
-          name: d.data().name || d.id,
+        const allCompanies = companyRows.map(row => ({
+          id: row.id,
+          name: row.name || row.id,
         }));
-
-        const allMlmTemplates = tplSnap.docs
-          .map((d) => ({ id: d.id, ...d.data() }))
-          .filter((t) => t.MainType === "MLM");
-
         setCompanies(allCompanies);
-        setTemplates(allMlmTemplates);
       } catch (err) {
         console.error(err);
         if (!cancelled) setFetchError("Failed to load data. Please try again.");
@@ -92,6 +85,23 @@ export default function CopyRankPromotion() {
     })();
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setTemplates([]);
+    setSelectedSelectType("");
+    setCheckedSubtypes(new Set());
+    if (!sourceCompany) return;
+    setLoading(true);
+    setFetchError(null);
+    readAdminTemplates({ company: sourceCompany }).then(rows => {
+      if (!cancelled) setTemplates(rows);
+    }).catch(error => {
+      console.error(error);
+      if (!cancelled) setFetchError("Failed to load source templates. Please try again.");
+    }).finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [sourceCompany]);
 
   // ── derived ─────────────────────────────────────────────────────────────────
   const source = useMemo(
@@ -212,13 +222,15 @@ export default function CopyRankPromotion() {
             try {
               // eslint-disable-next-line no-unused-vars
               const { id: _id, ...rest } = t;
-              await addDoc(collection(db, COLLECTIONS.MLMTEMPLATE), {
+              const created = await addDoc(collection(db, COLLECTIONS.MLMTEMPLATE), {
                 ...rest,
                 Subtype: finalSubtype,
                 Company: company.id,
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
               });
+              rememberTemplateChange(created.id, { ...rest, Subtype: finalSubtype, Company: company.id,
+                createdAt: new Date(), updatedAt: new Date() });
               existingKeys.add(dupKey);
               copied++;
             } catch (err) {
@@ -275,13 +287,15 @@ export default function CopyRankPromotion() {
         try {
           // eslint-disable-next-line no-unused-vars
           const { id: _id, ...rest } = t;
-          await addDoc(collection(db, COLLECTIONS.MLMTEMPLATE), {
+          const created = await addDoc(collection(db, COLLECTIONS.MLMTEMPLATE), {
             ...rest,
             Subtype: finalSubtype,
             Company: targetCompany,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           });
+          rememberTemplateChange(created.id, { ...rest, Subtype: finalSubtype, Company: targetCompany,
+            createdAt: new Date(), updatedAt: new Date() });
           // Mark as inserted so duplicate within same batch is also caught
           existingKeys.add(dupKey);
           copied++;
@@ -434,7 +448,7 @@ export default function CopyRankPromotion() {
       {/* Source company picker */}
       <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl p-5 space-y-3">
         <FieldLabel required>Copy From Company</FieldLabel>
-        <select
+        <SearchableSelect
           value={sourceCompany}
           onChange={(e) => {
             const next = e.target.value;
@@ -449,7 +463,7 @@ export default function CopyRankPromotion() {
         >
           <option value="">Select source company…</option>
           {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+        </SearchableSelect>
       </div>
 
       {source && (
@@ -586,7 +600,7 @@ export default function CopyRankPromotion() {
             <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl p-5 space-y-3">
               <FieldLabel required>Copy To Company</FieldLabel>
               <div className="relative">
-                <select
+                <SearchableSelect
                   value={targetCompany}
                   onChange={(e) => {
                     setTargetCompany(e.target.value);
@@ -601,7 +615,7 @@ export default function CopyRankPromotion() {
                   {targetCompanies.map((c) => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
-                </select>
+                </SearchableSelect>
                 <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               </div>
               {targetCompany && (
