@@ -2,7 +2,10 @@ import SearchableSelect from "../../components/SearchableSelect.jsx";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import * as XLSX from "xlsx";
 import { readAdminTemplates, readAdminCompanies, readAdminQuality } from "../../Utils/adminTemplateReads";
-import { useAdminTabUpdates } from "../../Utils/adminTabUpdates.js";
+import { COLLECTIONS } from "../../collections";
+import { useAdminSavedRows } from "../../Utils/useAdminSavedRows.js";
+import { auth } from "../../../Firebase";
+import { adminSavedChanges } from "../../Utils/adminSavedChanges.js";
 import {
   getTemplateQualityCounts,
   getSubtypeQualityKey,
@@ -365,6 +368,8 @@ export default function TemplateData() {
   const [filterType,    setFilterType]    = useState("");
 
   const fetchAll = useCallback(async ({ force = false } = {}) => {
+    const uid = auth.currentUser?.uid;
+    const revision = adminSavedChanges.revision(uid);
     setLoading(true);
     try {
       const [templates, quality, companies] = await Promise.all([
@@ -372,8 +377,8 @@ export default function TemplateData() {
         readAdminQuality({ force }),
         readAdminCompanies({ force }),
       ]);
-      setAllTemplates(templates);
-      setQualityDocs(quality);
+      setAllTemplates(adminSavedChanges.mergeSince(uid, COLLECTIONS.MLMTEMPLATE, templates, revision));
+      setQualityDocs(adminSavedChanges.mergeSince(uid, COLLECTIONS.TEMPLATEQUALITY, quality, revision));
       setCompanies(companies.map(row => ({ id: row.id, name: row.name || row.id })));
       setFetched(true);
     } catch (err) {
@@ -383,7 +388,8 @@ export default function TemplateData() {
     }
   }, []);
 
-  useAdminTabUpdates('templatedata', fetchAll, fetched);
+  useAdminSavedRows(COLLECTIONS.MLMTEMPLATE, setAllTemplates);
+  useAdminSavedRows(COLLECTIONS.TEMPLATEQUALITY, setQualityDocs);
 
   const companiesMap = useMemo(() => {
     const m = {};

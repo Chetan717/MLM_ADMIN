@@ -6,7 +6,7 @@
 - Tab बदलकर लौटने पर loaded records, fetched status, search, filters और pagination की state रहती है। केवल tab switch होने से वही fetch फिर शुरू नहीं होता।
 - Marketing Team/Coupon Manager और Graphics/Music के अंदर के data-owning tabs भी अपनी state रखते हैं।
 - Refresh/Fetch के existing buttons latest data लाते हैं। Task Management का existing live-update behavior जारी रहता है।
-- Company, Graphics और Template Add/Edit/Delete के बाद पहले से loaded संबंधित list को लौटने पर एक बार update किया जाता है। सामान्य tab switch पर यह update नहीं चलता।
+- Company और Graphics Add/Edit/Delete के बाद पहले से loaded संबंधित list को लौटने पर एक बार update किया जाता है। Template/quality saves अब known saved data से loaded list को सीधे बदलते हैं; उसके लिए return पर fetch नहीं होता। सामान्य tab switch पर refresh नहीं चलता।
 - Inactive pages के dropdown/dialog portals दूसरे page को नहीं ढकते। Sidebar/header direct navigation और browser Back/Forward के साथ सही tab दिखाते हैं।
 - State केवल इस open Admin session की browser memory में रहती है। Logout, account/role/permission change या full browser page reload के बाद इसे फिर load करना होगा। Loaded data को localStorage में नहीं रखा गया है।
 - Add/Edit forms के existing unsaved-change guards और normal route behavior रखे गए हैं; अलग-अलग record edit forms को background में cache नहीं किया जाता।
@@ -25,8 +25,8 @@ npm run build
 
 ## Verification
 
-- 121 Node tests pass.
-- 12 DOM UI tests pass, including existing searchable selects and new navigation/state-retention cases.
+- 128 Node tests pass.
+- 21 DOM UI tests pass, including searchable selects, navigation/state retention, template badges/arrangement and destination selection.
 - Production build और Add Form prebuild checks pass.
 - New retention utilities/components के targeted lint checks pass; effect-based state synchronization rule इस targeted command में disabled थी।
 

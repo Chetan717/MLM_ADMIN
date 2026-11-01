@@ -46,7 +46,7 @@ firebase deploy --only "functions:publishTemplateCatalogOnWrite,functions:cleanu
 ## Validation
 
 - 121 Admin Node tests pass.
-- 12 DOM UI tests pass, including tab retention and: search/sort, original ID change event, form data/validation/reset, multiple/disabled options, outside click/Escape, keyboard and dark mode.
+- 21 DOM UI tests pass, including tab retention and: search/sort, original ID change event, form data/validation/reset, multiple/disabled options, outside click/Escape, keyboard and dark mode.
 - Production build और Add Form prebuild checks pass.
 - New shared component/helper पर targeted ESLint checks pass; effect-based DOM synchronization check को इस targeted lint command में disable किया गया था।
 - Backend functions, merged indexes और package/lock files पिछले read-fix version से byte-for-byte unchanged हैं।

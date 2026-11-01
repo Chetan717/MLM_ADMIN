@@ -135,8 +135,6 @@ function EmptyState({ filtered }) {
 
 // ── Pagination ────────────────────────────────────────────────────────────────
 export function Pagination({ currentPage, totalPages, onPageChange }) {
-  if (totalPages <= 1) return null;
-
   const pages = useMemo(() => {
     const range = [];
     const delta = 2;
@@ -145,6 +143,8 @@ export function Pagination({ currentPage, totalPages, onPageChange }) {
     }
     return range;
   }, [currentPage, totalPages]);
+
+  if (totalPages <= 1) return null;
 
   return (
     <div className="flex items-center justify-center gap-1.5 pt-4">

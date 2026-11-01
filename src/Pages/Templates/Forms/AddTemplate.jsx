@@ -153,7 +153,7 @@ export default function AddTemplate() {
         createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
       });
       rememberTemplateChange(templateId, { ...form, serial: Number(form.serial) || 0, GraphicsLink: cleanGraphics,
-        createdAt: new Date(), updatedAt: new Date() });
+        createdAt: new Date(), updatedAt: new Date() }, "added");
       setSuccess(true);
       setTimeout(() => navigate("/templates"), 1200);
     } catch (err) {

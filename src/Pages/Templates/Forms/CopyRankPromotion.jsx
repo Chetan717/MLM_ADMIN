@@ -1,4 +1,5 @@
 import SearchableSelect from "../../../components/SearchableSelect.jsx";
+import CompanyMultiSelect from "../../../components/CompanyMultiSelect.jsx";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router";
 import {
@@ -53,6 +54,7 @@ export default function CopyRankPromotion() {
       ? ALL_COMPANIES_TARGET
       : "",
   );
+  const [excludedCompanyIds, setExcludedCompanyIds] = useState(new Set());
 
   // copy state
   const [copying,      setCopying]      = useState(false);
@@ -147,6 +149,18 @@ export default function CopyRankPromotion() {
   );
 
   const isAllCompaniesTarget = targetCompany === ALL_COMPANIES_TARGET;
+  const selectedTargetCompanies = useMemo(
+    () => targetCompanies.filter(company => !excludedCompanyIds.has(company.id)),
+    [targetCompanies, excludedCompanyIds],
+  );
+  const toggleTargetCompany = useCallback(id => {
+    setExcludedCompanyIds(previous => {
+      const next = new Set(previous);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+    setCopyResult(null);
+  }, []);
 
   // ── checkbox handlers ────────────────────────────────────────────────────────
   const toggleSubtype = useCallback((key) => {
@@ -170,6 +184,7 @@ export default function CopyRankPromotion() {
   // an existing subtype name in the target company (appends " Copy")
   const runCopy = useCallback(async (subtypesToCopy, subtypesToRename = new Set()) => {
     if (!sourceCompany || !selectedSelectType || !targetCompany || targetCompany === sourceCompany) return;
+    if (isAllCompaniesTarget && selectedTargetCompanies.length === 0) return;
     setCopying(true);
     setCopyResult(null);
 
@@ -207,7 +222,7 @@ export default function CopyRankPromotion() {
           );
         });
 
-        for (const company of targetCompanies) {
+        for (const company of selectedTargetCompanies) {
           const existingKeys = existingKeysByCompany.get(company.id) || new Set();
           existingKeysByCompany.set(company.id, existingKeys);
 
@@ -220,7 +235,6 @@ export default function CopyRankPromotion() {
             }
 
             try {
-              // eslint-disable-next-line no-unused-vars
               const { id: _id, ...rest } = t;
               const created = await addDoc(collection(db, COLLECTIONS.MLMTEMPLATE), {
                 ...rest,
@@ -230,7 +244,7 @@ export default function CopyRankPromotion() {
                 updatedAt: serverTimestamp(),
               });
               rememberTemplateChange(created.id, { ...rest, Subtype: finalSubtype, Company: company.id,
-                createdAt: new Date(), updatedAt: new Date() });
+                createdAt: new Date(), updatedAt: new Date() }, "added");
               existingKeys.add(dupKey);
               copied++;
             } catch (err) {
@@ -248,7 +262,7 @@ export default function CopyRankPromotion() {
         copied,
         skipped: skippedDuplicate,
         errors,
-        companies: targetCompanies.length,
+        companies: selectedTargetCompanies.length,
       });
       setCopying(false);
       return;
@@ -285,7 +299,6 @@ export default function CopyRankPromotion() {
           continue;
         }
         try {
-          // eslint-disable-next-line no-unused-vars
           const { id: _id, ...rest } = t;
           const created = await addDoc(collection(db, COLLECTIONS.MLMTEMPLATE), {
             ...rest,
@@ -295,7 +308,7 @@ export default function CopyRankPromotion() {
             updatedAt: serverTimestamp(),
           });
           rememberTemplateChange(created.id, { ...rest, Subtype: finalSubtype, Company: targetCompany,
-            createdAt: new Date(), updatedAt: new Date() });
+            createdAt: new Date(), updatedAt: new Date() }, "added");
           // Mark as inserted so duplicate within same batch is also caught
           existingKeys.add(dupKey);
           copied++;
@@ -311,7 +324,7 @@ export default function CopyRankPromotion() {
 
     setCopyResult({ copied, skipped: skippedDuplicate, errors });
     setCopying(false);
-  }, [sourceCompany, targetCompany, subtypeMap, selectedSelectType, isAllCompaniesTarget, targetCompanies]);
+  }, [sourceCompany, targetCompany, subtypeMap, selectedSelectType, isAllCompaniesTarget, selectedTargetCompanies]);
 
   // entry point for the Copy button — checks for subtype-name clashes in the
   // target company first, and if found, opens a confirmation popup before
@@ -320,9 +333,9 @@ export default function CopyRankPromotion() {
     if (!sourceCompany || !selectedSelectType || !targetCompany || checkedSubtypes.size === 0 || targetCompany === sourceCompany) return;
 
     if (isAllCompaniesTarget) {
-      if (targetCompanies.length === 0) return;
+      if (selectedTargetCompanies.length === 0) return;
       const confirmed = window.confirm(
-        `Copy the selected templates to all ${targetCompanies.length} companies? Existing duplicates (same subtype + serial) will be skipped.`,
+        `Copy the selected templates to ${selectedTargetCompanies.length} selected companies? Existing duplicates (same subtype + serial) will be skipped.`,
       );
       if (!confirmed) return;
       await runCopy(checkedSubtypes);
@@ -362,7 +375,7 @@ export default function CopyRankPromotion() {
     }
 
     await runCopy(checkedSubtypes);
-  }, [sourceCompany, targetCompany, checkedSubtypes, selectedSelectType, runCopy, isAllCompaniesTarget, targetCompanies.length]);
+  }, [sourceCompany, targetCompany, checkedSubtypes, selectedSelectType, runCopy, isAllCompaniesTarget, selectedTargetCompanies.length]);
 
   // admin confirmed: duplicate the clashing subtypes as "<name> Copy"
   const confirmDuplicate = useCallback(async () => {
@@ -394,9 +407,9 @@ export default function CopyRankPromotion() {
   const targetName = useMemo(
     () =>
       isAllCompaniesTarget
-        ? `all ${targetCompanies.length} companies`
+        ? `${selectedTargetCompanies.length} selected companies`
         : companies.find((c) => c.id === targetCompany)?.name || "",
-    [companies, targetCompany, isAllCompaniesTarget, targetCompanies.length],
+    [companies, targetCompany, isAllCompaniesTarget, selectedTargetCompanies.length],
   );
 
   // ── render ───────────────────────────────────────────────────────────────────
@@ -450,12 +463,14 @@ export default function CopyRankPromotion() {
         <FieldLabel required>Copy From Company</FieldLabel>
         <SearchableSelect
           value={sourceCompany}
+          disabled={copying}
           onChange={(e) => {
             const next = e.target.value;
             setSourceCompany(next);
             setSelectedSelectType("");
             setCheckedSubtypes(new Set());
-            setTargetCompany("");
+            setTargetCompany(previous => previous === ALL_COMPANIES_TARGET ? previous : "");
+            setExcludedCompanyIds(new Set());
             setCopyResult(null);
             setShowConflictPopup(false);
           }}
@@ -479,6 +494,7 @@ export default function CopyRankPromotion() {
                   <button
                     key={t.value}
                     type="button"
+                    disabled={copying}
                     onClick={() => {
                       setSelectedSelectType(t.value);
                       setCheckedSubtypes(new Set());
@@ -523,6 +539,7 @@ export default function CopyRankPromotion() {
                 <button
                   type="button"
                   onClick={toggleAll}
+                  disabled={copying}
                   className="text-xs font-medium text-violet-600 dark:text-violet-400 hover:underline"
                 >
                   {checkedSubtypes.size === subtypeKeys.length
@@ -570,6 +587,7 @@ export default function CopyRankPromotion() {
                       </span>
                       <input
                         type="checkbox"
+                        disabled={copying}
                         className="sr-only"
                         checked={checked}
                         onChange={() => toggleSubtype(sub)}
@@ -602,8 +620,10 @@ export default function CopyRankPromotion() {
               <div className="relative">
                 <SearchableSelect
                   value={targetCompany}
+                  disabled={copying}
                   onChange={(e) => {
                     setTargetCompany(e.target.value);
+                    if (e.target.value === ALL_COMPANIES_TARGET) setExcludedCompanyIds(new Set());
                     setCopyResult(null);
                   }}
                   className={selectCls}
@@ -618,6 +638,12 @@ export default function CopyRankPromotion() {
                 </SearchableSelect>
                 <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               </div>
+              {isAllCompaniesTarget && (
+                <CompanyMultiSelect companies={targetCompanies} excludedIds={excludedCompanyIds}
+                  onToggle={toggleTargetCompany} disabled={copying}
+                  onSelectAll={() => { setExcludedCompanyIds(new Set()); setCopyResult(null); }}
+                  onDeselectAll={() => { setExcludedCompanyIds(new Set(targetCompanies.map(company => company.id))); setCopyResult(null); }} />
+              )}
               {targetCompany && (
                 <p className="text-xs text-gray-400">
                   {isAllCompaniesTarget ? (
@@ -750,7 +776,7 @@ export default function CopyRankPromotion() {
                   copying ||
                   checkedSubtypes.size === 0 ||
                   !targetCompany ||
-                  (isAllCompaniesTarget && targetCompanies.length === 0)
+                  (isAllCompaniesTarget && selectedTargetCompanies.length === 0)
                 }
                 className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold transition-colors shadow-lg shadow-violet-500/20"
               >

@@ -2,7 +2,7 @@ import SearchableSelect from "../../components/SearchableSelect.jsx";
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { httpsCallable } from "firebase/functions";
-import { functions } from "../../../Firebase";
+import { auth, functions } from "../../../Firebase";
 import {
   CirclePlus,
   ArrowRotateRight,
@@ -24,7 +24,9 @@ import {
 import { getAdminSession } from "../../Utils/adminSession";
 import IssueFollowup from "./IssueFollowup";
 import { readAdminTemplates, readAdminCompanies, readAdminQuality } from "../../Utils/adminTemplateReads";
-import { useAdminTabUpdates } from "../../Utils/adminTabUpdates.js";
+import { COLLECTIONS } from "../../collections";
+import { adminSavedChanges } from "../../Utils/adminSavedChanges.js";
+import { useAdminSavedRows, useRecentTemplateChanges } from "../../Utils/useAdminSavedRows.js";
 
 const TEMPLATE_FILTER_STORAGE_KEY = "mlmlive.admin.template-filters.v1";
 
@@ -98,6 +100,12 @@ export default function TemplateHome() {
   // ── Quality / issues data ────────────────────────────────────────────────
   const [qualityDocs,    setQualityDocs]    = useState([]);
   const [qualityLoading, setQualityLoading] = useState(false);
+  useAdminSavedRows(COLLECTIONS.MLMTEMPLATE, setAllTemplates);
+  useAdminSavedRows(COLLECTIONS.TEMPLATEQUALITY, setQualityDocs);
+  const recentChanges = useRecentTemplateChanges();
+  const [recentRequest, setRecentRequest] = useState(0);
+  const recentSavedRows = useMemo(() => allTemplates.filter(row => recentChanges[row.id])
+    .sort((a, b) => recentChanges[b.id].revision - recentChanges[a.id].revision), [allTemplates, recentChanges]);
 
   // ── Active tab (MLM / General) — controls filters ────────────────────────
   const [activeTab, setActiveTab] = useState(initialFilters.activeTab);
@@ -123,13 +131,13 @@ export default function TemplateHome() {
 
   // Keep dashboard state while Add/Edit/Copy pages temporarily unmount it.
   useEffect(() => {
-    window.localStorage.setItem(TEMPLATE_FILTER_STORAGE_KEY, JSON.stringify({
+    try { window.localStorage.setItem(TEMPLATE_FILTER_STORAGE_KEY, JSON.stringify({
       activeTab,
       mlmFilterSelectType,
       mlmFilterCompany,
       generalFilterSelectType,
       search,
-    }));
+    })); } catch { /* Filters still work when browser storage is disabled. */ }
   }, [activeTab, mlmFilterSelectType, mlmFilterCompany, generalFilterSelectType, search]);
 
   // ── companiesMap for child components ─────────────────────────────────────
@@ -141,9 +149,12 @@ export default function TemplateHome() {
 
   // ── Fetch quality docs ────────────────────────────────────────────────────
   const fetchQuality = useCallback(async ({ force = false } = {}) => {
+    const uid = auth.currentUser?.uid;
+    const revision = adminSavedChanges.revision(uid);
     setQualityLoading(true);
     try {
-      setQualityDocs(await readAdminQuality({ force }));
+      const rows = await readAdminQuality({ force });
+      setQualityDocs(adminSavedChanges.mergeSince(uid, COLLECTIONS.TEMPLATEQUALITY, rows, revision));
     } catch (err) {
       console.error("Quality fetch error:", err);
     } finally {
@@ -153,6 +164,8 @@ export default function TemplateHome() {
 
   // ── Fetch templates ───────────────────────────────────────────────────────
   const fetchTemplates = useCallback(async ({ force = false } = {}) => {
+    const uid = auth.currentUser?.uid;
+    const revision = adminSavedChanges.revision(uid);
     setLoading(true);
     setError(null);
     try {
@@ -161,12 +174,14 @@ export default function TemplateHome() {
         readAdminTemplates({ force }),
         readAdminCompanies({ force }),
       ]);
-      setAllTemplates(data);
+      setAllTemplates(adminSavedChanges.mergeSince(uid, COLLECTIONS.MLMTEMPLATE, data, revision));
       setCompanies(companyRows.map(row => ({ id: row.id, name: row.name || row.id })));
       setFetched(true);
+      return true;
     } catch (err) {
       console.error(err);
       setError("Failed to load templates. Please try again.");
+      return false;
     } finally {
       setLoading(false);
       setCompaniesLoading(false);
@@ -175,10 +190,7 @@ export default function TemplateHome() {
 
   const handleQualityClose = useCallback(() => {
     setQualityTemplate(null);
-    fetchQuality();
-  }, [fetchQuality]);
-  const syncSavedChanges = useCallback(async () => { await fetchTemplates(); await fetchQuality(); }, [fetchTemplates, fetchQuality]);
-  useAdminTabUpdates('templates', syncSavedChanges, fetched);
+  }, []);
 
   // ── Quality status map: templateId → current OK / Issue counts ────────────
   const qualityStatusMap = useMemo(() => {
@@ -291,7 +303,10 @@ export default function TemplateHome() {
   const handleSelect = useCallback((tpl) => setSelectedTemplate(tpl), []);
 
   const handleEdit = useCallback(() => {
-    if (selectedTemplate) navigate(`/templates/edit/${selectedTemplate.id}`);
+    if (selectedTemplate) {
+      setSelectedTemplate(null);
+      navigate(`/templates/edit/${selectedTemplate.id}`);
+    }
   }, [selectedTemplate, navigate]);
 
   const handleOpenQuality = useCallback(() => {
@@ -305,7 +320,10 @@ export default function TemplateHome() {
   }, [navigate]);
 
   const handleRefresh = useCallback(async () => {
-    await fetchTemplates({ force: fetched });
+    const uid = auth.currentUser?.uid;
+    const revision = adminSavedChanges.revision(uid);
+    const loaded = await fetchTemplates({ force: fetched });
+    if (loaded) adminSavedChanges.clearRecent(uid, revision);
     await fetchQuality({ force: fetched });
   }, [fetchTemplates, fetchQuality, fetched]);
 
@@ -543,13 +561,28 @@ export default function TemplateHome() {
         </div>
       )}
 
+      {!loading && fetched && recentSavedRows.length > 0 && (
+        <div className="flex items-center justify-between gap-3 flex-wrap px-4 py-3 rounded-xl border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 text-amber-800 dark:text-amber-300 text-sm">
+          <span>{recentSavedRows.length} template{recentSavedRows.length !== 1 ? "s" : ""} recently added or updated.</span>
+          <button type="button" className="font-semibold underline underline-offset-2" onClick={() => {
+            setSearch(""); setMlmFilterCompany(""); setMlmFilterSelectType(""); setGeneralFilterSelectType("");
+            setActiveTab(recentSavedRows[0].MainType === "General" ? "General" : "MLM");
+            setRecentRequest(value => value + 1);
+          }}>Show recent changes</button>
+        </div>
+      )}
+
       {!loading && fetched && (
         <TemplateTable
           templates={filtered}
+          allTemplates={allTemplates}
           onSelect={handleSelect}
           filtered={isFiltered}
           companiesMap={companiesMap}
           qualityStatusMap={qualityStatusMap}
+          recentChanges={recentChanges}
+          recentRequest={recentRequest}
+          storageScope={JSON.stringify([admin.uid || auth.currentUser?.uid, admin.id, admin.ownerAdminId, admin.actorType])}
           activeTab={activeTab}
           onTabChange={handleTabChange}
         />
