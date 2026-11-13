@@ -153,13 +153,13 @@ export default function UserSubscriptionDashboard() {
     const mobileKey = mobileLookupKey(mobile);
     const user    = userMap[mobileKey] || {};
     const profile = profileMap[mobileKey] || {};
-    const companyId = profile.companyId || s.companyId || "";
+    const companyId = s.companyId || profile.companyId || "";
     const companyFromMap = companyId ? (companyMap[companyId]?.name || "") : "";
     const companyName = profile.companyName || companyFromMap || s.company || s.companyName || "—";
     const purchaseDate = toDate(s.PurchaseAt);
     const expiryDateVal = toDate(s.expirydate) || toDate(s.expiryDate);
-    const isActive  = s.Active === true;
-    const isExpired = s.Expire === true || s.Active === false;
+    const isActive  = s.Active === true && (!expiryDateVal || expiryDateVal > new Date()) && (!toDate(s.startdate) || toDate(s.startdate) <= new Date());
+    const isExpired = s.Expire === true || s.Active === false || Boolean(expiryDateVal && expiryDateVal <= new Date());
 
     return {
       ...s,
@@ -211,7 +211,7 @@ export default function UserSubscriptionDashboard() {
       const latestActive = activeSubs[0] || null;
       const latestSub    = sorted[0] || null;
 
-      const totalRevenue = g.subs.reduce((sum, s) => sum + (Number(s.PaymentAmount) || 0), 0);
+      const totalRevenue = g.subs.reduce((sum, s) => sum + Math.max(0, (Number(s.PaymentAmount) || 0) - Number(s.refundedPaise || 0) / 100), 0);
 
       return {
         ...g,
@@ -243,7 +243,7 @@ export default function UserSubscriptionDashboard() {
     const totalSubs        = allEnriched.length;
     const totalActiveSubs  = allEnriched.filter(s => s.isActive).length;
     const totalExpiredSubs = allEnriched.filter(s => s.isExpired).length;
-    const totalRevenue     = allEnriched.reduce((sum, s) => sum + (Number(s.PaymentAmount) || 0), 0);
+    const totalRevenue     = allEnriched.reduce((sum, s) => sum + Math.max(0, (Number(s.PaymentAmount) || 0) - Number(s.refundedPaise || 0) / 100), 0);
     return { totalUsers, activeUsers, expiredUsers, noSubUsers, totalSubs, totalActiveSubs, totalExpiredSubs, totalRevenue };
   }, [userGroups, allEnriched]);
 
@@ -278,7 +278,7 @@ export default function UserSubscriptionDashboard() {
           totalSubs:   filteredSubs.length,
           latestActive: activeSubs[0] || null,
           latestSub:    filteredSubs[0] || null,
-          totalRevenue: filteredSubs.reduce((sum, s) => sum + (Number(s.PaymentAmount) || 0), 0),
+          totalRevenue: filteredSubs.reduce((sum, s) => sum + Math.max(0, (Number(s.PaymentAmount) || 0) - Number(s.refundedPaise || 0) / 100), 0),
         };
       }).filter(Boolean);
     }

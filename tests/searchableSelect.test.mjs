@@ -55,5 +55,5 @@ test('Admin pages use the shared searchable control rather than leaving native s
     }
   };
   walk(source);
-  assert.equal(migrated, 52);
+  assert.equal(migrated, 54);
 });

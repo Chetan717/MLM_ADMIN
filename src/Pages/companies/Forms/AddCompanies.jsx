@@ -3,8 +3,8 @@ import { notifyAdminTabUpdates } from "../../../Utils/adminTabUpdates.js";
 import useUnsavedFormGuard from "../../../Utils/useUnsavedFormGuard";
 import { useState, useCallback } from "react";
 import { useNavigate } from "react-router";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "../../../../Firebase";
+import { functions } from "../../../../Firebase";
+import { httpsCallable } from "firebase/functions";
 import {
   CirclePlus,
   TrashBin,
@@ -48,6 +48,7 @@ const emptyTraining  = () => ({ id: uid(), trainingname: "", images: [emptyImgEn
 const emptyMeeting   = () => ({ id: uid(), meetingname:  "", images: [emptyImgEntry()] });
 const emptyPlan      = () => ({
   _key:        uid(),
+  planId:      crypto.randomUUID(),
   PlanName:    "",
   PlanAmount:  "",
   Duration:    "",
@@ -669,34 +670,27 @@ export default function AddCompanies() {
     setLoading(true);
     setError(null);
     try {
-      const cleanPlans = form.Plans.map(({ _key, ...rest }) => ({
-        ...rest,
-        PlanAmount: Number(rest.PlanAmount) || 0,
-        downloads:  Number(rest.downloads)  || 0,
-        Day_value:  Number(rest.Day_value)  || 0,
-      }));
+      const cleanPlans = form.Plans.map(({ _key, ...rest }) => rest);
 
-      await addDoc(collection(db, COLLECTIONS.MLMCOMP), {
-        ...form,
+      await httpsCallable(functions, "panelSavePaymentCompany")({ company: {
         name:        form.name.trim(),
         address:     form.address.trim(),
         owner:       form.owner.trim(),
         designation: form.designation.trim(),
         logos:       form.logos.filter((l) => l.link.trim()).map(({ link, size }) => ({ link, size: size || "" })),
         topuplines:  form.topuplines.filter((t) => t.name.trim() || t.link.trim()).map((t) => ({ name: t.name.trim(), link: t.link.trim() })),
+        active: form.active, launched: form.launched,
         Plans:       cleanPlans,
         profile:     form.profile.filter((p) => p.profilename.trim()).map(({ id: _id, ...p }) => ({ profilename: p.profilename.trim(), profileimage: p.profileimage || "" })),
         trainings:   form.trainings.filter((t) => t.trainingname.trim() || t.images.some((i) => i.url.trim())).map(({ id: _id, ...t }) => ({ trainingname: t.trainingname.trim(), trainingimages: t.images.filter((i) => i.url.trim()).map((i) => i.url) })),
         meetings:    form.meetings.filter((m) => m.meetingname.trim() || m.images.some((i) => i.url.trim())).map(({ id: _id, ...m }) => ({ meetingname: m.meetingname.trim(), meetingimages: m.images.filter((i) => i.url.trim()).map((i) => i.url) })),
-        createdAt:   serverTimestamp(),
-        updatedAt:   serverTimestamp(),
-      });
+      } });
       setSuccess(true);
       notifyAdminTabUpdates('companies');
       setTimeout(() => navigate("/companies"), 1200);
     } catch (err) {
       console.error(err);
-      setError("Failed to save company. Please try again.");
+      setError(err.message || "Failed to save company. Please try again.");
     } finally {
       setLoading(false);
     }

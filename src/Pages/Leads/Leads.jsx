@@ -1,7 +1,8 @@
 import SearchableSelect from "../../components/SearchableSelect.jsx";
 import { useState, useCallback, useMemo } from "react";
 import { collection, getDocs, doc, setDoc, updateDoc, getDoc } from "firebase/firestore";
-import { db } from "../../../Firebase";
+import { db, functions } from "../../../Firebase";
+import { httpsCallable } from "firebase/functions";
 import * as XLSX from "xlsx";
 import { COLLECTIONS } from "../../collections";
 import { formatLastDownload, toDownloadDate } from "../../Utils/lastDownload";
@@ -745,22 +746,11 @@ export default function Leads() {
 
     setAssigning(true);
     try {
-      let mteamCouponCode = null;
-      if (mteamMember.assign_coupon_id) {
-        const couponSnap = await getDoc(doc(db, COLLECTIONS.COUPONCODE, mteamMember.assign_coupon_id));
-        if (couponSnap.exists() && couponSnap.data().active) {
-          mteamCouponCode = couponSnap.data().code || null;
-        }
+      const ids = Array.from(selectedUserIds);
+      const assign = httpsCallable(functions, "panelAssignPaymentMarketingUsers");
+      for (let offset = 0; offset < ids.length; offset += 100) {
+        await assign({ memberId: mteamMember.id, userIds: ids.slice(offset, offset + 100) });
       }
-
-      const promises = Array.from(selectedUserIds).map(async (userId) => {
-        await updateDoc(doc(db, COLLECTIONS.USERS, userId), {
-          referredBy:      mteamMember.referCode,
-          referredByMteam: mteamMember.id,
-          mteamCouponCode: mteamCouponCode,
-        });
-      });
-      await Promise.all(promises);
 
       setAssignResult({ success: true, count: selectedUserIds.size, member: mteamMember.name });
       setSelectedUserIds(new Set());

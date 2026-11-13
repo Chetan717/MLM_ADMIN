@@ -54,6 +54,6 @@ Note: Browser and Edge caches are independent. Recheck origin response headers a
 
 - Denormalized `leads_index` materialized on user/profile/subscription updates with server-side, cursor-based pagination, composite indexes and filtered export jobs.
 - Per-company and per-type Admin lists paginated; no 100k-row browser joins.
-- Admin permission enforcement server-side (security rules/Functions) verified, with quotas, audit logs and App Check where appropriate.
+- Admin permission enforcement server-side (security rules/Functions) verified, with quotas and audit logs.
 - Versioned immutable CDN media with smaller responsive thumbnails; verified media migration from Firebase Storage to R2.
 - Scheduled cost dashboard + alerts; measure p50/p95 latency and billing during staged traffic load tests (1k → 10k → 100k concurrency patterns based on actual usage, not assumed concurrent users).

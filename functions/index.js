@@ -60,6 +60,9 @@ const { annotateSubtypeDates, buildPopupFeed } = require("./popupCatalog");
 
 initializeApp();
 const db = getFirestore();
+// The payment backend lives in the existing Admin Firebase project. Both
+// frontends call it; secrets are never shipped in either frontend bundle.
+Object.assign(exports, require("./paymentFunctions")({ db, FieldValue, Timestamp, requireAssignedAdminTab, requireMasterAdmin }));
 const templateAssetCleanupQueue = createTemplateAssetCleanupQueue({ db, Timestamp });
 const scrypt = promisify(crypto.scrypt);
 const EMAIL_PASS = defineSecret("EMAIL_PASS");

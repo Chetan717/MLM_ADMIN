@@ -208,8 +208,10 @@ export default function Home() {
       const totalProfiles = profileCountSnap.data().count;
       const totalAdmins = adminCountSnap?.data().count ?? 0;
 
-      const activeSubs  = subs.filter((s) => s.Active === true);
-      const expiredSubs = subs.filter((s) => s.Expire === true || s.Active === false);
+      const activeNow = s => s.Active === true && (!toDate(s.startdate) || toDate(s.startdate) <= new Date()) && (!toDate(s.expirydate) || toDate(s.expirydate) > new Date());
+      const expiredNow = s => s.Expire === true || s.Active === false || Boolean(toDate(s.expirydate) && toDate(s.expirydate) <= new Date());
+      const activeSubs = subs.filter(activeNow);
+      const expiredSubs = subs.filter(expiredNow);
 
       const monthMap = {};
       subs.forEach((s) => {
@@ -218,8 +220,8 @@ export default function Home() {
         const key = monthLabel(d);
         if (!monthMap[key]) monthMap[key] = { month: key, Total: 0, Active: 0, Expired: 0 };
         monthMap[key].Total++;
-        if (s.Active === true) monthMap[key].Active++;
-        if (s.Expire === true || s.Active === false) monthMap[key].Expired++;
+        if (activeNow(s)) monthMap[key].Active++;
+        if (expiredNow(s)) monthMap[key].Expired++;
       });
       const monthlyTrend = Object.values(monthMap)
         .sort((a, b) => new Date("01 " + a.month) - new Date("01 " + b.month))

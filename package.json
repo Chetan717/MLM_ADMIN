@@ -10,10 +10,13 @@
     "test": "node --test tests/*.test.mjs",
     "preview": "vite preview",
     "prebuild": "node tools/verify-add-forms.mjs",
-    "verify:add-forms": "node tools/verify-add-forms.mjs"
+    "verify:add-forms": "node tools/verify-add-forms.mjs",
+    "test:payments": "node --test tests/paymentDomain.test.mjs tests/paymentHttp.test.mjs tests/paymentRulesInstall.test.mjs",
+    "test:payments:emulator": "firebase emulators:exec --only firestore --project demo-mlmlive-payment --config firebase.payment-test.json \"node --test tests/payment.integration.mjs\""
   },
   "overrides": {
-    "protobufjs": "^8.6.3"
+    "protobufjs": "^8.6.3",
+    "@grpc/grpc-js": "1.14.7"
   },
   "dependencies": {
     "@heroui/react": "^3.0.0-rc.1",
@@ -26,11 +29,12 @@
     "react-is": "^19.2.7",
     "react-router": "^7.13.1",
     "recharts": "^2.15.3",
-    "xlsx": "^0.18.5"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@babel/core": "^7.29.0",
     "@eslint/js": "^9.39.4",
+    "@firebase/rules-unit-testing": "5.0.0",
     "@gravity-ui/icons": "^2.18.0",
     "@rolldown/plugin-babel": "^0.2.0",
     "@types/react": "^19.2.14",

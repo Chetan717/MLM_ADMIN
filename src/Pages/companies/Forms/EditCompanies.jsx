@@ -46,13 +46,13 @@ const emptyImgEntry  = () => ({ id: uid(), url: "" });
 const emptyTraining  = () => ({ id: uid(), trainingname: "", images: [emptyImgEntry()] });
 const emptyMeeting   = () => ({ id: uid(), meetingname:  "", images: [emptyImgEntry()] });
 const emptyPlan      = () => ({
-  _key: uid(), PlanName: "", PlanAmount: "", Duration: "", Day_value: "",
+  _key: uid(), planId: crypto.randomUUID(), PlanName: "", PlanAmount: "", Duration: "", Day_value: "",
   Type: "", downloads: "", image_url: "", Launch: true, Description: "",
 });
 
 const normalisePlans = (arr) =>
   (arr || []).map((p) => ({
-    _key: uid(), PlanName: p.PlanName || "", PlanAmount: p.PlanAmount ?? "",
+    _key: uid(), planId: p.planId || "", unlimitedDownloads: p.unlimitedDownloads === true, PlanName: p.PlanName || "", PlanAmount: p.PlanAmount ?? "",
     Duration: p.Duration || "", Day_value: p.Day_value ?? "", Type: p.Type || "",
     downloads: p.downloads ?? "", image_url: p.image_url || "",
     Launch: p.Launch ?? true, Description: p.Description || "",
@@ -552,6 +552,7 @@ export default function EditCompanies() {
   const deleteRequestId = searchParams.get("deleteRequest") || "";
   const navigate = useNavigate();
   const [form,          setForm]          = useState(null);
+  const [plansVersion, setPlansVersion] = useState(0);
   const [fetchLoading,  setFetchLoading]  = useState(true);
   const [saveLoading,   setSaveLoading]   = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -570,6 +571,7 @@ export default function EditCompanies() {
         if (!snap.exists()) { setError("Company not found."); return; }
         const d = snap.data();
         if (!cancelled) {
+          setPlansVersion(Number(d.plansVersion || 0));
           setForm({
             name: d.name || "", address: d.address || "", owner: d.owner || "", designation: d.designation || "",
             logos:      normaliseLinks(d.logos).length          ? normaliseLinks(d.logos)          : [emptyLink()],
@@ -597,26 +599,23 @@ export default function EditCompanies() {
     if (!form?.name?.trim()) { setError("Company name is required."); return; }
     setSaveLoading(true); setError(null);
     try {
-      const cleanPlans = form.Plans.map(({ _key, ...rest }) => ({
-        ...rest, PlanAmount: Number(rest.PlanAmount) || 0, downloads: Number(rest.downloads) || 0, Day_value: Number(rest.Day_value) || 0,
-      }));
-      await updateDoc(doc(db, "mlmcomp", id), {
-        ...form,
+      const cleanPlans = form.Plans.map(({ _key, ...rest }) => rest);
+      await httpsCallable(functions, "panelSavePaymentCompany")({ companyId: id, expectedPlansVersion: plansVersion, company: {
         name: form.name.trim(), address: form.address.trim(), owner: form.owner.trim(), designation: form.designation.trim(),
         logos:      form.logos.filter((l) => l.link.trim()).map(({ link, size }) => ({ link, size: size || "" })),
         topuplines: form.topuplines.filter((t) => t.name.trim() || t.link.trim()).map((t) => ({ name: t.name.trim(), link: t.link.trim() })),
+        active: form.active, launched: form.launched,
         Plans:      cleanPlans,
         profile:    form.profile.filter((p) => p.profilename.trim()).map(({ id: _id, ...p }) => ({ profilename: p.profilename.trim(), profileimage: p.profileimage || "" })),
         trainings:  form.trainings.filter((t) => t.trainingname.trim() || t.images.some((i) => i.url.trim())).map(({ id: _id, ...t }) => ({ trainingname: t.trainingname.trim(), trainingimages: t.images.filter((i) => i.url.trim()).map((i) => i.url) })),
         meetings:   form.meetings.filter((m) => m.meetingname.trim() || m.images.some((i) => i.url.trim())).map(({ id: _id, ...m }) => ({ meetingname: m.meetingname.trim(), meetingimages: m.images.filter((i) => i.url.trim()).map((i) => i.url) })),
-        updatedAt:  serverTimestamp(),
-      });
+      } });
       setSuccess(true);
       notifyAdminTabUpdates('companies');
       setTimeout(() => navigate("/companies"), 1200);
-    } catch (err) { console.error(err); setError("Failed to update company. Please try again."); }
+    } catch (err) { console.error(err); setError(err.message || "Failed to update company. Please try again."); }
     finally { setSaveLoading(false); }
-  }, [form, id, navigate]);
+  }, [form, id, navigate, plansVersion]);
 
   const { requestDelete, DeleteAuthModal, BlockedToast } = useAdminDeleteGuard();
 

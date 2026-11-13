@@ -1,0 +1,85 @@
+{
+  "release": "2026-11-13",
+  "revision": "no-captcha",
+  "baseline": "MLM_ADMIN_RAZORPAY_SECURE_13Nov2026.zip",
+  "description": "Removed frontend App Check initialization and callable attestation requirements; Firebase authentication, authorization and all server-side payment checks retained.",
+  "files": [
+    {
+      "path": "Firebase.js",
+      "status": "modified",
+      "previousSha256": "95070e0d67fa06028a3bd61e2b74fa25a234fec4e5d412d7d23760f082d95815",
+      "sha256": "6ab1dfd007ef4ce6b43a490c158b0e2066d53475fcb3d8745098e11a0fb0fa13"
+    },
+    {
+      "path": "PAYMENT_SECURITY_REVIEW.md",
+      "status": "modified",
+      "previousSha256": "aa2e19344fb702888388d4d6198351272db8f0c51f949e5d56a83511f011280d",
+      "sha256": "b2af60b46b939a6242b514373c248996acda98a17cabbcaec8f4046d2065a101"
+    },
+    {
+      "path": "PAYMENT_VALIDATION.md",
+      "status": "modified",
+      "previousSha256": "ab25b0d300383ae6f912676a664b3d77c8820b383b942efd8caaae2d7b68ac74",
+      "sha256": "2924394235d5587b16d92adf2f082b7f84dc971a00b5c6dbe2f2c60315081940"
+    },
+    {
+      "path": "RAZORPAY_SETUP_HINDI.md",
+      "status": "modified",
+      "previousSha256": "3459c09426ee5dd4a85d14755594881aba260d2995a0137093ffd9208a3d5797",
+      "sha256": "bc0f1a9816889619ec87d25d0c7fd85ebff6c433a7e7bb102b6ef6f7fe1c3e7b"
+    },
+    {
+      "path": "SCALABILITY_R2_RELEASE_README.md",
+      "status": "modified",
+      "previousSha256": "dc2a09afe64821ef7c3ae06b6875ece067971414efe6964f997772bc41bf2b75",
+      "sha256": "d80828f25d81f8d4e7f10b740a0d36cc28ed933ae4a8242784927b2b40ae0548"
+    },
+    {
+      "path": "START_HERE_PAYMENT.md",
+      "status": "modified",
+      "previousSha256": "c2fd3cd6969c38b80d2367c03b80bd09ec49b312e005f97fbd912de8c2d08bfa",
+      "sha256": "b9936f2d03f96fe970ee9395db9cbba7a6e497e2bd131f8ab219593000cf6a21"
+    },
+    {
+      "path": "functions/index.js",
+      "status": "modified",
+      "previousSha256": "56fbb758295cb8b158d824ee73c70370e8a8ac261f77f95fbf81721105239d94",
+      "sha256": "37658ec23fb080996036dfa8e6e5396293ffa1ac668d0d6e78a610201570f7b5"
+    },
+    {
+      "path": "functions/paymentFunctions.js",
+      "status": "modified",
+      "previousSha256": "b66aa19606101641272fb8ff6413c56d9869b4d97c6e3a13702a211c86ff650a",
+      "sha256": "cdf7a7671bac87da4614356b6113da7b041063850e7a9d44862eb3361ba73d27"
+    },
+    {
+      "path": "src/Pages/Leads/Leads.jsx",
+      "status": "modified",
+      "previousSha256": "7be67dc533a130cfb12c7f86d95d17101038b90b627aa781b16e718f882b5452",
+      "sha256": "9f02d3d3bf905cc106e6ab8712e7d91878d11bafd380da8a03e3df9ad7e7fccf"
+    },
+    {
+      "path": "src/Pages/Payments/Payments.jsx",
+      "status": "modified",
+      "previousSha256": "ae24e3b25e22dfe52d20a2bbf84baf93ce709856510fd2851b5b8d3b885606fb",
+      "sha256": "a8b70b287135b81f705559f36568afeff73753f05fda9ccca2077e3b8ed34135"
+    },
+    {
+      "path": "src/Utils/paymentAppCheck.js",
+      "status": "deleted",
+      "previousSha256": "f093e95660dfa6f40dc46aec7c29b119f57b768efd131e61ea718ef537db305b"
+    },
+    {
+      "path": "tests/payment.integration.mjs",
+      "status": "modified",
+      "previousSha256": "9876c11339af7f6d7e35dfcccc628202409802b6b1f8abb835b125b4f18f73b0",
+      "sha256": "61d43a69c44929349c91a4c0dd759bf56063d349dd828e88779276fadf88f72e"
+    },
+    {
+      "path": "tests/paymentHttp.test.mjs",
+      "status": "modified",
+      "previousSha256": "672efbc3780f8e76c8adbc46c88d222a4c0f424f69b2de737bf61580a7e56c4f",
+      "sha256": "ef119c1f7f4fdc20a80963ce2ac512985b1c720c8e0b1afc1828748b37577590"
+    }
+  ]
+}

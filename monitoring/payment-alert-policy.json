@@ -1,0 +1,20 @@
+{
+  "displayName": "MLMLIVE payment security failures",
+  "combiner": "OR",
+  "enabled": true,
+  "conditions": [
+    {
+      "displayName": "More than 10 payment security failures per minute",
+      "conditionThreshold": {
+        "filter": "metric.type=\"logging.googleapis.com/user/mlmlive_payment_security\" AND resource.type=\"cloud_run_revision\"",
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 10,
+        "duration": "0s",
+        "aggregations": [ { "alignmentPeriod": "60s", "perSeriesAligner": "ALIGN_DELTA", "crossSeriesReducer": "REDUCE_SUM" } ],
+        "trigger": { "count": 1 }
+      }
+    }
+  ],
+  "notificationChannels": [],
+  "documentation": { "mimeType": "text/markdown", "content": "Review payment verification denials, invalid webhook HMACs and recovery failures in Cloud Logging. Review Razorpay Payments in Admin. Do not bypass verification or mark a payment paid manually. Add your approved Cloud Monitoring notification channel before enabling this policy." }
+}

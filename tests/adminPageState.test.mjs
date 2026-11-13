@@ -3,7 +3,7 @@ import test from 'node:test';
 import { ADMIN_PAGE_PATHS, canonicalAdminPage, adminWorkspaceKey, adminNavigationId } from '../src/Utils/adminPageState.js';
 
 test('only the bounded sidebar pages are retained; edit/create forms are never cached as separate records', () => {
-  assert.equal(new Set(ADMIN_PAGE_PATHS).size, 16);
+  assert.equal(new Set(ADMIN_PAGE_PATHS).size, 17);
   for (const path of ADMIN_PAGE_PATHS) assert.equal(canonicalAdminPage(path), path);
   for (const path of ['/companies/add', '/companies/edit/one', '/templates/edit/two', '/graphics/add', '/login', '/unknown']) {
     assert.equal(canonicalAdminPage(path), null);

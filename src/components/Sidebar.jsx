@@ -59,6 +59,7 @@ const ALL_NAV_ITEMS = [
   { icon: ChartTreemap,       label: "Marketing",              id: "marketing",       link: "/marketing" },
   { icon: ChartTreemap,       label: "Remove Background API",  id: "removebg",        link: "/removebg" },
   { iconComponent: BarChartIcon, label: "Subscription Dashboard", id: "userdashboard", link: "/userdashboard" },
+  { iconComponent: BarChartIcon, label: "Razorpay Payments", id: "userdashboard", link: "/payments" },
   { iconComponent: PersonIcon,   label: "User Leads",          id: "leads",           link: "/leads" },
   { iconComponent: ReportIcon,   label: "Template Data",       id: "templatedata",    link: "/templatedata" },
   { iconComponent: ExpenseIcon,  label: "Expense Manager",     id: "expense",         link: "/expense", ownerOnly: true },
