@@ -14,6 +14,10 @@ const {
 const logger = require("firebase-functions/logger");
 const D = require("./paymentDomain");
 const { createPaymentService } = require("./paymentService");
+// Company media metadata shares one Firestore document. Keep a bounded margin
+// below its 1 MiB limit; checkout/payment requests retain D.input's 64 KiB cap.
+const COMPANY_MAX_BYTES = 768 * 1024;
+const COMPANY_MAX_ENTRIES = 2000;
 
 module.exports = function paymentFunctions({
   db,
@@ -31,7 +35,7 @@ module.exports = function paymentFunctions({
   // authentication and ownership are checked even when a caller has no Origin.
   const origins = String(
     process.env.PAYMENT_ALLOWED_ORIGINS ||
-      "https://app.mlmlive.in,https://admin.mlmlive.in",
+      "https://app.mlmlive.in,https://admin.mlmlive.in,https://mlm-admin-smoky.vercel.app",
   )
     .split(",")
     .map((s) => s.trim())
@@ -95,7 +99,7 @@ module.exports = function paymentFunctions({
       "companies",
       "Company management access is required.",
     );
-    D.input(request.data, ["companyId", "company", "expectedPlansVersion"]);
+    D.input(request.data, ["companyId", "company", "expectedPlansVersion"], COMPANY_MAX_BYTES);
     const source = D.input(request.data.company, [
       "name",
       "address",
@@ -109,7 +113,7 @@ module.exports = function paymentFunctions({
       "launched",
       "trainings",
       "meetings",
-    ]);
+    ], COMPANY_MAX_BYTES);
     const companyRef = request.data.companyId
       ? db.collection("mlmcomp").doc(D.id(request.data.companyId))
       : db.collection("mlmcomp").doc();
@@ -123,14 +127,29 @@ module.exports = function paymentFunctions({
     };
     if (!company.name) D.fail("invalid-argument", "Company name is required.");
     // Never spread an arbitrary object into a document with financial fields.
-    const stringRows = (rows, fields, max = 100) => {
-      if (!Array.isArray(rows) || rows.length > max)
-        D.fail("invalid-argument", "Invalid company entries.");
+    const entries = (rows, field, max = COMPANY_MAX_ENTRIES) => {
+      if (rows === undefined) return [];
+      if (!Array.isArray(rows))
+        D.fail("invalid-argument", `Company ${field} must be a list.`);
+      if (rows.length > max)
+        D.fail("invalid-argument", `Company ${field} has ${rows.length} entries; maximum is ${max}.`);
+      return rows;
+    };
+    const stringRows = (rows, fields, label) => {
+      rows = entries(rows, label);
       return rows.map((row) => {
         D.input(row, fields);
         return Object.fromEntries(
           fields.map((field) => {
-            const value = D.text(row[field] || "", 2048);
+            let raw = row[field] ?? "";
+            // Older company documents store logo sizes as numbers. Preserve
+            // those values in the form's string representation, not as objects.
+            if (field === "size" && typeof raw === "number") {
+              if (!Number.isFinite(raw) || raw < 0 || raw > 100000)
+                D.fail("invalid-argument", "Invalid company logos size.");
+              raw = String(raw);
+            }
+            const value = D.text(raw, 2048);
             if (
               ["link", "profileimage"].includes(field) &&
               value &&
@@ -142,25 +161,22 @@ module.exports = function paymentFunctions({
         );
       });
     };
-    company.logos = stringRows(source.logos || [], ["link", "size"]);
-    company.topuplines = stringRows(source.topuplines || [], ["name", "link"]);
-    company.profile = stringRows(source.profile || [], [
+    company.logos = stringRows(source.logos, ["link", "size"], "logos");
+    company.topuplines = stringRows(source.topuplines, ["name", "link"], "topuplines");
+    company.profile = stringRows(source.profile, [
       "profilename",
       "profileimage",
-    ]);
+    ], "profile");
     for (const [kind, label, images] of [
       ["trainings", "trainingname", "trainingimages"],
       ["meetings", "meetingname", "meetingimages"],
     ]) {
-      if (!Array.isArray(source[kind]) || source[kind].length > 100)
-        D.fail("invalid-argument", "Invalid company sections.");
-      company[kind] = source[kind].map((row) => {
-        D.input(row, [label, images]);
-        if (!Array.isArray(row[images]) || row[images].length > 100)
-          D.fail("invalid-argument", "Invalid images.");
+      company[kind] = entries(source[kind], kind, 200).map((row) => {
+        D.input(row, [label, images], COMPANY_MAX_BYTES);
+        const urls = entries(row[images], `${kind}.${images}`, 500);
         return {
           [label]: D.text(row[label], 200),
-          [images]: row[images].map((url) => {
+          [images]: urls.map((url) => {
             const value = D.text(url, 2048);
             if (!/^https:\/\//i.test(value))
               D.fail("invalid-argument", "Image must use HTTPS.");
@@ -169,9 +185,7 @@ module.exports = function paymentFunctions({
         };
       });
     }
-    const plans = Array.isArray(source.Plans)
-      ? source.Plans.filter((p) => p.PlanName || p.PlanAmount)
-      : [];
+    const plans = entries(source.Plans, "Plans", 50);
     company.Plans = D.companyPlans({ Plans: plans }, companyRef.id);
     await db.runTransaction(async (tx) => {
       const current = await tx.get(companyRef);
@@ -183,6 +197,10 @@ module.exports = function paymentFunctions({
           "failed-precondition",
           "Company changed in another session. Reload before saving.",
         );
+      // Include preserved legacy fields in the size check. Never truncate media
+      // lists to make the document fit or silently clear an invalid section.
+      if (Buffer.byteLength(JSON.stringify({ ...current.data(), ...company })) > COMPANY_MAX_BYTES)
+        D.fail("invalid-argument", "Company data is too large. Reduce media entries before saving.");
       tx.set(
         companyRef,
         {

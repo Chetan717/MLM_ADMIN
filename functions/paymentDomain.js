@@ -29,7 +29,7 @@ function id(value, name = "ID") {
     fail("invalid-argument", `Invalid ${name}.`);
   return value;
 }
-function input(value, fields) {
+function input(value, fields, maxBytes = 65536) {
   if (
     !value ||
     typeof value !== "object" ||
@@ -37,7 +37,7 @@ function input(value, fields) {
     Object.keys(value).some((key) => !fields.includes(key))
   )
     fail("invalid-argument", "Unexpected request fields.");
-  if (Buffer.byteLength(JSON.stringify(value)) > 65536)
+  if (Buffer.byteLength(JSON.stringify(value)) > maxBytes)
     fail("invalid-argument", "Request is too large.");
   return value;
 }
@@ -87,7 +87,7 @@ function normalizePlan(raw, companyId) {
   // Existing duration options include a 1,000,000-day Unlimited option.
   const Day_value = integer(raw.Day_value, 1, 1000000, "plan duration");
   const downloads = integer(
-    raw.downloads ?? 0,
+    raw.downloads === "" ? 0 : raw.downloads ?? 0,
     0,
     100000000,
     "download allowance",
