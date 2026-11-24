@@ -11,8 +11,9 @@
     "preview": "vite preview",
     "prebuild": "node tools/verify-add-forms.mjs",
     "verify:add-forms": "node tools/verify-add-forms.mjs",
-    "test:payments": "node --test tests/paymentDomain.test.mjs tests/paymentHttp.test.mjs tests/paymentRulesInstall.test.mjs",
-    "test:payments:emulator": "firebase emulators:exec --only firestore --project demo-mlmlive-payment --config firebase.payment-test.json \"node --test tests/payment.integration.mjs\""
+    "test:payments": "node --test tests/paymentDomain.test.mjs tests/paymentHttp.test.mjs tests/paymentRulesInstall.test.mjs tests/createPlanId.test.mjs",
+    "test:payments:emulator": "firebase emulators:exec --only firestore --project demo-mlmlive-payment --config firebase.payment-test.json \"node --test tests/payment.integration.mjs\"",
+    "test:rules:production": "firebase emulators:exec --only firestore --project demo-mlmlive-rules --config firebase.production-rules-test.json \"node --test tests/productionRules.integration.mjs\""
   },
   "overrides": {
     "protobufjs": "^8.6.3",

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { httpsCallable } from "firebase/functions";
-import { collection, getDocs } from "firebase/firestore";
-import { functions, db, auth } from "../../../Firebase";
+import { functions, auth } from "../../../Firebase";
 import { adminReadCache } from "../../Utils/adminReadCache";
 import { useAdminAuth } from "../../Auth/AdminAuthContext";
 import SearchableSelect from "../../components/SearchableSelect";
@@ -24,9 +23,7 @@ const reconcile = httpsCallable(functions, "panelReconcilePayment", {
 
 export default function Payments() {
   const { session } = useAdminAuth();
-  const [companies, setCompanies] = useState([]),
-    [companyId, setCompanyId] = useState(""),
-    [status, setStatus] = useState("");
+  const [status, setStatus] = useState("");
   const [data, setData] = useState({ summary: {}, items: [], cursor: null }),
     [loading, setLoading] = useState(false),
     [busy, setBusy] = useState("");
@@ -39,24 +36,6 @@ export default function Payments() {
     session?.role === "Master Admin" ||
     session?.assigntab?.includes("userdashboard");
   const master = session?.role === "Master Admin";
-  useEffect(() => {
-    if (!authorized) return;
-    let cancelled = false;
-    adminReadCache
-      .get(auth.currentUser?.uid, "payment-company-directory", async () =>
-        (await getDocs(collection(db, "mlmcomp"))).docs.map((d) => ({
-          id: d.id,
-          name: d.data().name,
-        })),
-      )
-      .then((rows) => {
-        if (!cancelled) setCompanies(rows);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [authorized]);
   const load = useCallback(
     async (cursor = null, force = false) => {
       if (!authorized) return;
@@ -64,7 +43,7 @@ export default function Payments() {
       setLoading(true);
       setError("");
       try {
-        const query = { companyId, status, ...(cursor ? { cursor } : {}) };
+        const query = { status, ...(cursor ? { cursor } : {}) };
         const next = await adminReadCache.get(
           auth.currentUser?.uid,
           `payment-page:${JSON.stringify(query)}`,
@@ -90,7 +69,7 @@ export default function Payments() {
         if (run === generation.current) setLoading(false);
       }
     },
-    [companyId, status, authorized],
+    [status, authorized],
   );
   useEffect(() => {
     setData({ summary: {}, items: [], cursor: null });
@@ -151,7 +130,7 @@ export default function Payments() {
         <div>
           <h1 className="font-bold text-2xl">Razorpay payments</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Verified payment totals, refunds and company plans
+            Verified app payment totals, refunds and subscriptions
           </p>
         </div>
         <button
@@ -163,19 +142,6 @@ export default function Payments() {
         </button>
       </div>
       <div className="flex flex-wrap gap-3">
-        <SearchableSelect
-          aria-label="Filter payments by company"
-          value={companyId}
-          onChange={(e) => setCompanyId(e.target.value)}
-          className={`${inputClass} min-w-52`}
-        >
-          <option value="">All companies</option>
-          {companies.map((company) => (
-            <option key={company.id} value={company.id}>
-              {company.name}
-            </option>
-          ))}
-        </SearchableSelect>
         <SearchableSelect
           aria-label="Filter payment status"
           value={status}
@@ -220,7 +186,7 @@ export default function Payments() {
       </div>
       <p className="text-xs text-gray-500">
         Totals include payments recorded by this integration. Status filters
-        apply to the list; totals cover the selected company. Gateway fees and
+        apply to the list; totals cover the entire app. Gateway fees and
         settlement amounts are available in Razorpay.
       </p>
       {error && (
@@ -238,7 +204,7 @@ export default function Payments() {
               {[
                 "Date / receipt",
                 "Customer",
-                "Company / plan",
+                "App / plan",
                 "Base",
                 "Discount",
                 "GST",
@@ -267,7 +233,7 @@ export default function Payments() {
                   <p className="text-xs text-gray-400">{row.mobileNo}</p>
                 </td>
                 <td className="px-4 py-3">
-                  <p>{row.companyName}</p>
+                  <p>{row.scope === "app" ? "MLM LIVE — All App" : row.companyName}</p>
                   <p className="text-xs text-gray-400">{row.plan.PlanName}</p>
                   <p className="text-xs text-violet-500">{{ poster: "Poster", video: "Video Editing", combo: "Poster + Video" }[row.plan.serviceType || "poster"]}</p>
                 </td>
@@ -343,7 +309,7 @@ export default function Payments() {
             <dl className="text-sm space-y-2 mt-5">
               {[
                 ["Receipt", selected.id],
-                ["Company", selected.companyName],
+                ["Access", selected.scope === "app" ? "Entire MLM LIVE app" : selected.companyName],
                 ["Plan", selected.plan.PlanName],
                 ["Customer", `${selected.userName} · ${selected.mobileNo}`],
                 ["Order ID", selected.orderId || "Confirmation pending"],

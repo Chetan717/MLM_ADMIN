@@ -1,3 +1,5 @@
+> 24 Nov 2026 correction: plans पूरे app के लिए central हैं। Admin → App Plans से manage करें। पहले `GLOBAL_PLANS_SETUP_HINDI.md` पढ़ें। इस archive में full merged `firestore.rules` मौजूद है।
+
 # MLMLIVE Razorpay — App + Admin setup
 
 Is release mein code implementation hai. Production par deploy, merchant keys,
@@ -97,29 +99,17 @@ RAZORPAY_MODE=test. Wrong mode/key combination fail closed hota hai.
 
 ## 5. Firestore rules — compulsory
 
-Uploaded Admin ZIP mein full production Firestore rules nahi the. Isliye
-`firestore.payment.rules` ko akela production replacement ki tarah deploy na
-karein: woh unrelated app modules ko default-deny karega.
-
-Firebase Console se current full rules ko `current-production.rules` naam se
-export/save karein. Phir:
-
-```bash
-node tools/install-payment-rules.mjs current-production.rules firestore.rules
-```
-
-Installer payment, subscription, company, identity, coupon, marketing aur
-session collection blocks ko secure versions se replace karta hai. Unrelated
-named collection rules bachata hai. Agar broad wildcard allow rule payment
-collections ko cover karta hai, installer **refuse** karega. Us wildcard ko
-explicit non-payment collection rules mein scope karein, phir rerun karein.
-Firestore mein allow rules OR hote hain; deny block add karna broad allow ko
-override nahi karta. Generated full rules review/test karna zaroori hai.
+Is corrected archive mein aapke supplied full production rules ke saath merged
+`firestore.rules` ready hai. Is release ke liye `current-production.rules`
+file ya installer chalane ki zaroorat nahi hai. Later production rule changes
+hon to unhe preserve karke review karein. `firestore.payment.rules` sirf
+snippet hai; ise akela full replacement deploy na karein.
 
 New client restrictions:
 
 - Subscription/payment/commission/totals/log/session/credential writes server-only.
-- Company create/update, including plan prices, only panelSavePaymentCompany.
+- Company metadata create/update only panelSavePaymentCompany.
+- Central app plan catalog only panelAppPlans/panelSaveAppPlans; direct appPlans reads/writes denied.
 - Coupon/marketing writes existing authenticated Admin callables se.
 - User apna coupon, UID, mobile, credits ya financial fields change nahi kar sakta.
 - Existing profile ka company ID direct update nahi ho sakta; normal profile
@@ -141,7 +131,7 @@ ko delete/TTL na karein: permanent deduplication un par depend karti hai.
 ## 6. Sirf nayi payment Functions deploy karein
 
 ```bash
-firebase deploy --only functions:paymentCatalog,functions:paymentQuote,functions:paymentCreateOrder,functions:paymentVerify,functions:paymentStatus,functions:paymentHistory,functions:paymentLegacyHistory,functions:paymentEntitlement,functions:panelSavePaymentCompany,functions:panelAssignPaymentMarketingUsers,functions:panelUpsertMarketingMember,functions:panelUpsertMarketingCoupon,functions:panelDeleteMarketingMember,functions:panelDeleteMarketingCoupon,functions:panelPaymentOverview,functions:panelReconcilePayment,functions:panelCloseUncreatedPayment,functions:razorpayWebhook,functions:processRazorpayWebhook,functions:reconcileRazorpayPayments
+firebase deploy --only functions:paymentCatalog,functions:paymentQuote,functions:paymentCreateOrder,functions:paymentVerify,functions:paymentStatus,functions:paymentHistory,functions:paymentLegacyHistory,functions:paymentEntitlement,functions:panelAppPlans,functions:panelSaveAppPlans,functions:panelSavePaymentCompany,functions:panelAssignPaymentMarketingUsers,functions:panelUpsertMarketingMember,functions:panelUpsertMarketingCoupon,functions:panelDeleteMarketingMember,functions:panelDeleteMarketingCoupon,functions:panelPaymentOverview,functions:panelReconcilePayment,functions:panelCloseUncreatedPayment,functions:razorpayWebhook,functions:processRazorpayWebhook,functions:reconcileRazorpayPayments
 ```
 
 Existing auth/OTP functions ko delete ya redeploy-all karke replace na karein.
@@ -175,7 +165,7 @@ new key se verify nahi honge; original-key reconciliation required hai.
 
 1. PAYMENTS_ENABLED=true (RAZORPAY_MODE=test) karke paymentCreateOrder function
    redeploy karein. App aur Admin ko apne production/test env se build/deploy karein.
-2. Selected company, inactive plan, coupon, failed payment, cancel, captured
+2. Same central plans for different company profiles and no profile, inactive plan, coupon, failed payment, cancel, captured
    payment, double click, app restart, duplicate webhook aur refund test karein.
 3. Admin > Razorpay Payments mein exact price/GST/commission aur reconciliation
    check karein. App receipt/payment history check karein.
@@ -224,8 +214,10 @@ Legacy subscriptions App > Payment history > View earlier subscriptions par
 on-demand read hoti hain. Unverified legacy client-written records ko naye
 trusted entitlements mein automatically convert nahi kiya gaya. Existing legacy
 subscriber ka remaining period carry forward karne se pehle Admin ko original
-payment proof verify karke controlled migration karni hogi. Naye verified
-Razorpay renewals same-company paid periods ke baad queue hote hain.
+payment proof verify karke controlled migration karni hogi. Pehle secure payment integration ke verified paid grants apni original dates
+aur remaining allowances ke saath app-wide migrate hote hain. Naye verified
+Razorpay renewals app-wide same-service paid periods ke baad queue hote hain.
+PSERVER/manual rows bina verified proof ke trusted benefits nahi banate.
 
 Receipt payment acknowledgement hai, GST tax invoice nahi. GST 18% discount ke
 baad apply hota hai, jaisa existing checkout mein tha; merchant tax registration

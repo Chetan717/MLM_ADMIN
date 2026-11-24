@@ -107,7 +107,6 @@ module.exports = function paymentFunctions({
       "designation",
       "logos",
       "topuplines",
-      "Plans",
       "profile",
       "active",
       "launched",
@@ -185,8 +184,6 @@ module.exports = function paymentFunctions({
         };
       });
     }
-    const plans = entries(source.Plans, "Plans", 50);
-    company.Plans = D.companyPlans({ Plans: plans }, companyRef.id);
     await db.runTransaction(async (tx) => {
       const current = await tx.get(companyRef);
       if (request.data.companyId && !current.exists)
@@ -215,16 +212,41 @@ module.exports = function paymentFunctions({
         { merge: true },
       );
       tx.create(db.collection("paymentAudit").doc(), {
-        action: "company_plans_saved",
+        action: "company_saved",
         companyId: companyRef.id,
         actorUid: request.auth.uid,
-        planIds: company.Plans.map((p) => p.planId),
         atMs: Date.now(),
       });
     });
     return { companyId: companyRef.id };
   }
+  async function appPlansRead(request) {
+    await requireAssignedAdminTab(request, "companies", "App plan management access is required.");
+    D.input(request.data || {}, []);
+    const snap = await db.collection("appPlans").doc("main").get();
+    return { version: Number(snap.data()?.version || 0), plans: D.appPlans(snap.data()) };
+  }
+  async function appPlansSave(request) {
+    await requireAssignedAdminTab(request, "companies", "App plan management access is required.");
+    D.input(request.data, ["plans", "expectedVersion"], COMPANY_MAX_BYTES);
+    if (!Array.isArray(request.data.plans)) D.fail("invalid-argument", "Plans must be a list.");
+    const expectedVersion = D.integer(request.data.expectedVersion, 0, Number.MAX_SAFE_INTEGER, "catalog version");
+    const plans = D.appPlans({ Plans: request.data.plans });
+    const ref = db.collection("appPlans").doc("main");
+    await db.runTransaction(async (tx) => {
+      const current = await tx.get(ref);
+      const version = Number(current.data()?.version || 0);
+      if (version !== expectedVersion) D.fail("failed-precondition", "App plans changed in another session. Reload before saving.");
+      tx.set(ref, { Plans: plans, version: version + 1, scope: "app", appId: "mlmlive",
+        updatedAt: FieldValue.serverTimestamp(), updatedByUid: request.auth.uid });
+      tx.create(db.collection("paymentAudit").doc(), { action: "app_plans_saved", scope: "app",
+        actorUid: request.auth.uid, planIds: plans.map((p) => p.planId), atMs: Date.now() });
+    });
+    return { version: expectedVersion + 1, plans };
+  }
   return {
+    panelAppPlans: onCall(base, wrap("app_plans_read_denied", appPlansRead)),
+    panelSaveAppPlans: onCall(base, wrap("app_plans_save_denied", appPlansSave)),
     panelAssignPaymentMarketingUsers: onCall(
       base,
       wrap("payment_marketing_assignment_denied", async (request) => {
@@ -287,9 +309,9 @@ module.exports = function paymentFunctions({
           "userdashboard",
           "Subscription Dashboard access is required.",
         );
-        D.input(request.data, ["companyId", "status", "cursor"]);
+        D.input(request.data, ["status", "cursor"]);
         const [summary, page] = await Promise.all([
-          service.adminSummary(request.data.companyId || ""),
+          service.adminSummary(),
           service.adminList(request.data),
         ]);
         return { summary, ...page };

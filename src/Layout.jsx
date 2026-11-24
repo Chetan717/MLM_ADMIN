@@ -10,6 +10,7 @@ const PAGE_LABELS = {
   users:         "Users",
   orders:        "Orders",
   payments:      "Payments",
+  plans:         "App Plans",
   projects:      "Projects",
   notifications: "Notifications",
   settings:      "Settings",

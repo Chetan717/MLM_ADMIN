@@ -20,8 +20,8 @@ const req = data => ({ data, auth: { uid: UID, token: { mobileNo, auth_time: tim
 const hmac = (body, secret = 'test_key_secret') => crypto.createHmac('sha256', secret).update(body).digest('hex');
 const plan = { planId: 'plan_pro', PlanName: 'Company Pro', PlanAmount: '1000', Day_value: 30, Duration: '1 Month', Type: 'Pro', downloads: 50, Launch: true };
 const owner = data => env.authenticatedContext(UID, { mobileNo }).firestore();
-async function quote(couponCode = '') { return service.quote(req({ companyId: 'company_a', planId: plan.planId, couponCode })); }
-async function create(q, requestId = crypto.randomUUID()) { return service.create(req({ companyId: 'company_a', planId: plan.planId, couponCode: q.couponCode, quoteId: q.quoteId, requestId })); }
+async function quote(couponCode = '') { return service.quote(req({ planId: plan.planId, couponCode })); }
+async function create(q, requestId = crypto.randomUUID()) { return service.create(req({ planId: plan.planId, couponCode: q.couponCode, quoteId: q.quoteId, requestId })); }
 function capture(checkout, paymentStatus = 'captured') {
   const order = orders.get(checkout.orderId);
   order.status = paymentStatus === 'captured' ? 'paid' : 'attempted';
@@ -58,6 +58,7 @@ beforeEach(async () => {
   await Promise.all([
     db.doc('users/user_a').set({ mobileNo, uid: UID, name: 'Test Customer', mteamCouponCode: 'SAVE10', referCredit: 0 }),
     db.doc('mlmprofiles/profile_a').set({ mobile: mobileNo, uid: UID, companyId: 'company_a', companyName: 'Company A' }),
+    db.doc('appPlans/main').set({ Plans: [plan], version: 1 }),
     db.doc('mlmcomp/company_a').set({ name: 'Company A', active: true, launched: true, Plans: [plan] }),
     db.doc('mlmcomp/company_b').set({ name: 'Company B', active: true, launched: true, Plans: [{ ...plan, PlanAmount: 500 }] }),
     db.doc('couponcode/coupon_a').set({ code: 'SAVE10', active: true, user_discount: 10, marketing_member_percentage: 20, assigned_user: { id: 'seller' } }),
@@ -67,17 +68,18 @@ beforeEach(async () => {
 });
 after(async () => { await env?.cleanup(); if (adminApp) await deleteApp(adminApp); });
 
-test('catalog binds selected company to verified profile; refuses impersonation and unpublished companies', async () => {
-  const result = await service.catalog(req({ companyId: 'company_a' })); assert.equal(result.plans.length, 1); assert.equal(result.plans[0].PlanAmount, 1000);
-  await assert.rejects(service.catalog(req({ companyId: 'company_b' })), { code: 'permission-denied' });
-  await assert.rejects(service.catalog({ data: { companyId: 'company_a' } }), { code: 'unauthenticated' });
-  await db.doc('mlmcomp/company_a').update({ launched: false });
-  await assert.rejects(service.catalog(req({ companyId: 'company_a' })), { code: 'failed-precondition' });
+test('all accounts use the central app catalog without a company or MLM profile', async () => {
+  let result = await service.catalog(req({})); assert.equal(result.scope, 'app'); assert.equal(result.plans[0].PlanAmount, 1000);
+  await db.doc('mlmprofiles/profile_a').delete();
+  await db.doc('mlmcomp/company_a').update({ launched: false, active: false, Plans: [{ ...plan, PlanAmount: 1 }] });
+  result = await service.catalog(req({})); assert.equal(result.plans[0].PlanAmount, 1000);
+  await assert.rejects(service.catalog(req({ companyId: 'company_b' })), { code: 'invalid-argument' });
+  await assert.rejects(service.catalog({ data: {} }), { code: 'unauthenticated' });
 });
 test('create rederives exact price and rejects extra amount/user fields, stale quotes and inactive coupons', async () => {
   const q = await quote('SAVE10'); assert.equal(q.price.totalPaise, 106200);
-  await assert.rejects(service.create(req({ companyId: 'company_a', planId: plan.planId, quoteId: q.quoteId, requestId: 'a', amount: 1 })), { code: 'invalid-argument' });
-  await db.doc('mlmcomp/company_a').update({ Plans: [{ ...plan, PlanAmount: 1200 }] });
+  await assert.rejects(service.create(req({ planId: plan.planId, quoteId: q.quoteId, requestId: 'a', amount: 1 })), { code: 'invalid-argument' });
+  await db.doc('appPlans/main').update({ Plans: [{ ...plan, PlanAmount: 1200 }] });
   await assert.rejects(create(q), { code: 'failed-precondition' }); assert.equal(posts, 0);
   await db.doc('couponcode/coupon_a').update({ active: false });
   await assert.rejects(quote('SAVE10'), { code: 'failed-precondition' });
@@ -101,7 +103,7 @@ test('timeout after provider accepts order does not retry POST; signed webhook r
 test('authorized payment cannot activate; captured payment does, using frozen server order terms', async () => {
   const order = await create(await quote('SAVE10')); const authorized = capture(order, 'authorized');
   assert.equal((await verify(order, authorized)).status, 'pending'); assert.equal((await db.collection('paymentTestSubscriptions').get()).size, 0);
-  await db.doc('mlmcomp/company_a').update({ Plans: [{ ...plan, PlanAmount: 2500 }] });
+  await db.doc('appPlans/main').update({ Plans: [{ ...plan, PlanAmount: 2500 }] });
   const payment = capture(order); const result = await verify(order, payment); assert.equal(result.status, 'paid');
   const sub = (await db.doc(`paymentTestSubscriptions/${result.subscriptionId}`).get()).data();
   assert.equal(sub.PaymentAmount, 1062); assert.equal(sub.gstAmount, 162); assert.equal(sub.discountAmount, 100); assert.equal(sub.download, 50);
@@ -132,7 +134,7 @@ test('partial/full refunds reverse money monotonically, revoke benefits and cann
   const payload = { event: 'refund.processed', payload: { refund: { entity: { payment_id: payment.id } } } };
   await service.webhook(payload, 'evt_partial'); await service.webhook(payload, 'evt_partial');
   assert.equal((await db.doc('paymentStats/test_global').get()).data().netReceivedPaise, 53100);
-  assert.equal((await service.history(req({ companyId: 'company_a' }))).entitlement.status, 'expired');
+  assert.equal((await service.history(req({}))).entitlement.status, 'expired');
   payment.amount_refunded = 106200; payment.status = 'refunded'; payments.set(payment.id, payment); await service.webhook(payload, 'evt_full');
   await service.webhook({ event: 'payment.captured', payload: { payment: { entity: payment } } }, 'evt_old_capture');
   const stats = (await db.doc('paymentStats/test_global').get()).data(); assert.equal(stats.refundedPaise, 106200); assert.equal(stats.netReceivedPaise, 0); assert.equal(stats.paidOrders, 1);
@@ -144,25 +146,25 @@ test('refund before first confirmation records received/refunded totals but neve
   assert.equal((await db.doc('paymentStats/test_global').get()).data().netReceivedPaise, 0);
   const subscriptions = await db.collection('paymentTestSubscriptions').get(); assert.equal(subscriptions.docs[0].data().Active, false);
 });
-test('renewal queues for the same company and does not extend twice after retries', async () => {
+test('renewal queues app-wide and does not extend twice after retries', async () => {
   const first = await create(await quote()), payment1 = capture(first); await verify(first, payment1);
   time += 1000; const second = await create(await quote()), payment2 = capture(second); await verify(second, payment2); await verify(second, payment2);
-  const ent = (await service.history(req({ companyId: 'company_a' }))).entitlement;
+  const ent = (await service.history(req({}))).entitlement;
   assert.equal(ent.grants.length, 2); assert.equal(ent.grants[0].expiresAtMs, ent.grants[1].startsAtMs); assert.equal(ent.expiresAtMs - ent.startsAtMs, 60 * D.DAY_MS);
 });
 test('kill switch, mode mismatch, expired identity, and rate limits fail closed', async () => {
   const q = await quote(); config.enabled = false; await assert.rejects(create(q), { code: 'failed-precondition' }); config.enabled = true;
   config.mode = 'live'; await assert.rejects(create(q), { code: 'failed-precondition' }); config.mode = 'test';
-  const expired = req({ companyId: 'company_a' }); expired.auth.token.auth_time -= 8 * 86400; await assert.rejects(service.catalog(expired), { code: 'unauthenticated' });
-  for (let i = 0; i < 25; i++) await service.quote(req({ companyId: 'company_a', planId: 'unknown' })).catch(() => {});
+  const expired = req({}); expired.auth.token.auth_time -= 8 * 86400; await assert.rejects(service.catalog(expired), { code: 'unauthenticated' });
+  for (let i = 0; i < 25; i++) await service.quote(req({ planId: 'unknown' })).catch(() => {});
   await assert.rejects(quote(), { code: 'resource-exhausted' });
 });
 test('test-mode money and access never appear in live history, entitlement or totals', async () => {
   const order = await create(await quote()), payment = capture(order); await verify(order, payment);
-  assert.equal((await service.history(req({ companyId: 'company_a' }))).items.length, 1);
+  assert.equal((await service.history(req({}))).items.length, 1);
   config.mode = 'live'; config.keyId = 'rzp_live_example'; gateway.keyId = config.keyId;
-  const live = await service.history(req({ companyId: 'company_a' }));
-  assert.equal(live.items.length, 0); assert.equal(live.entitlement, null);
+  const live = await service.history(req({}));
+  assert.equal(live.items.length, 0); assert.equal(live.entitlement.status, 'expired');
   assert.deepEqual(await service.adminSummary(), {});
   assert.equal((await db.collection('subscription').get()).size, 0);
 });
@@ -191,7 +193,7 @@ test('duplicate failure notifications count the same failed payment only once', 
   assert.equal((await db.doc(`paymentPurchases/${checkout.purchaseId}`).get()).data().failureCount, 1);
 });
 test('refund tax allocation always sums exactly to refunded paise', async () => {
-  await db.doc('mlmcomp/company_a').update({ Plans: [{ ...plan, PlanAmount: '1.03' }] });
+  await db.doc('appPlans/main').update({ Plans: [{ ...plan, PlanAmount: '1.03' }] });
   const checkout = await create(await quote()), payment = capture(checkout); await verify(checkout, payment);
   assert.equal(payment.amount, 122);
   payment.amount_refunded = 61; payments.set(payment.id, payment);
@@ -199,18 +201,18 @@ test('refund tax allocation always sums exactly to refunded paise', async () => 
   const stats = (await db.doc('paymentStats/test_global').get()).data();
   assert.equal(stats.gstRefundedPaise + stats.taxableRefundedPaise, 61);
 });
-test('signed-in App callables work without attestation while company and identity checks remain enforced', async () => {
+test('signed-in App callables work without attestation while identity checks and app scope remain enforced', async () => {
   process.env.GCLOUD_PROJECT = PROJECT;
   const handlers = functionsRequire('./index');
-  const command = req({ companyId: 'company_a' });
+  const command = req({});
   assert.equal(command.app, undefined);
   const catalog = await handlers.paymentCatalog.run(command);
-  assert.equal(catalog.companyId, 'company_a');
+  assert.equal(catalog.scope, 'app');
   assert.equal(catalog.plans[0].PlanAmount, 1000);
-  const priced = await handlers.paymentQuote.run(req({ companyId: 'company_a', planId: plan.planId }));
+  const priced = await handlers.paymentQuote.run(req({ planId: plan.planId }));
   assert.equal(priced.price.totalPaise, 118000);
   await assert.rejects(handlers.paymentCatalog.run({ data: command.data }), { code: 'unauthenticated' });
-  await assert.rejects(handlers.paymentCatalog.run(req({ companyId: 'company_b' })), { code: 'permission-denied' });
+  await assert.rejects(handlers.paymentCatalog.run(req({ companyId: 'company_b' })), { code: 'invalid-argument' });
 });
 test('existing Admin lead assignment needs an active authorized session without attestation', async () => {
   process.env.GCLOUD_PROJECT = PROJECT;
@@ -231,7 +233,7 @@ test('existing Admin lead assignment needs an active authorized session without 
 });
 test('Firestore rules deny forged payment/subscription/plan and identity writes, including by signed-in Master Admin', async () => {
   const userDb = owner();
-  const protectedCollections = ['subscription', 'paymentlog', 'paymentPurchases', 'paymentEntitlements', 'paymentCommissions', 'paymentStats', 'paymentDaily', 'paymentAudit', '_razorpayOrders', '_razorpayPayments', '_razorpayWebhookEvents', '_paymentLimits', '_paymentCheckoutLocks', 'couponcode', 'mteam', '_marketingCouponCodes'];
+  const protectedCollections = ['subscription', 'paymentlog', 'appPlans', 'paymentPurchases', 'paymentEntitlements', 'paymentCommissions', 'paymentStats', 'paymentDaily', 'paymentAudit', '_razorpayOrders', '_razorpayPayments', '_razorpayWebhookEvents', '_paymentLimits', '_paymentCheckoutLocks', 'couponcode', 'mteam', '_marketingCouponCodes'];
   for (const name of protectedCollections) await assertFails(setDoc(doc(userDb, `${name}/fake`), { uid: UID, mobileNo, payment: 'Success', Active: true, totalPaise: 1 }));
   await assertFails(updateDoc(doc(userDb, 'mlmcomp/company_a'), { Plans: [{ ...plan, PlanAmount: 1 }] }));
   await assertFails(updateDoc(doc(userDb, 'users/user_a'), { mteamCouponCode: 'FAKE11', referCredit: 999 }));
@@ -256,7 +258,7 @@ test('rules expose only the authenticated user subscription and query', async ()
 
 test('video purchase stores service validity and never grants live poster subscription', async () => {
   config.mode = 'live'; config.keyId = 'rzp_live_example'; gateway.keyId = config.keyId;
-  await db.doc('mlmcomp/company_a').update({ Plans: [{ ...plan, serviceType: 'video' }] });
+  await db.doc('appPlans/main').update({ Plans: [{ ...plan, serviceType: 'video' }] });
   const order = await create(await quote());
   const result = await verify(order, capture(order));
   assert.equal(result.status, 'paid');
@@ -264,25 +266,25 @@ test('video purchase stores service validity and never grants live poster subscr
   assert.equal(result.serviceGrants[0].serviceType, 'video');
   assert.equal((await db.collection('subscription').get()).size, 0);
   assert.equal((await db.collection('paymentVideoSubscriptions').get()).size, 1);
-  const ent = await service.entitlement(req({ companyId: 'company_a' }));
+  const ent = await service.entitlement(req({}));
   assert.equal(ent.entitlement.services.video.status, 'active');
   assert.equal(ent.entitlement.services.poster.status, 'expired');
   await assertFails(setDoc(doc(owner(), 'paymentVideoSubscriptions/injected'), { Active: true }));
 });
 
 test('captured combo grants both services once; partial refund removes both grants', async () => {
-  await db.doc('mlmcomp/company_a').update({ Plans: [{ ...plan, serviceType: 'combo' }] });
+  await db.doc('appPlans/main').update({ Plans: [{ ...plan, serviceType: 'combo' }] });
   const order = await create(await quote());
   const payment = capture(order);
   await Promise.all([verify(order, payment), verify(order, payment)]);
-  let ent = (await service.entitlement(req({ companyId: 'company_a' }))).entitlement;
+  let ent = (await service.entitlement(req({}))).entitlement;
   assert.equal(ent.grants.length, 2);
   assert.equal(ent.services.poster.status, 'active'); assert.equal(ent.services.video.status, 'active');
   payment.amount_refunded = 100;
   payments.set(payment.id, payment);
   const result = await verify(order, payment);
   assert.equal(result.status, 'partially_refunded');
-  ent = (await service.entitlement(req({ companyId: 'company_a' }))).entitlement;
+  ent = (await service.entitlement(req({}))).entitlement;
   assert.equal(ent.services.poster.status, 'expired'); assert.equal(ent.services.video.status, 'expired');
 });
 
@@ -302,4 +304,93 @@ test('an abandoned checkout is marked expired only after the provider confirms n
   assert.equal(result.status, 'expired');
   assert.equal((await db.doc(`paymentPurchases/${order.purchaseId}`).get()).data().status, 'expired');
   assert.equal((await db.collection('paymentTestSubscriptions').get()).size, 0);
+});
+
+test('different company profiles receive the same app catalog and server quote', async () => {
+  const secondUid='mobile_8888888888';
+  await db.doc('users/user_b').set({uid:secondUid,mobileNo:'8888888888',name:'Other user'});
+  await db.doc('mlmprofiles/profile_b').set({uid:secondUid,mobile:'8888888888',companyId:'company_b'});
+  const second=data=>({...req(data),auth:{uid:secondUid,token:{mobileNo:'8888888888',auth_time:time/1000}}});
+  assert.deepEqual((await service.catalog(req({}))).plans,(await service.catalog(second({}))).plans);
+  assert.deepEqual((await quote()).price,(await service.quote(second({planId:plan.planId}))).price);
+  await db.doc('appPlans/main').update({Plans:[{...plan,Launch:false}]});
+  assert.equal((await service.catalog(req({}))).plans.length,0);
+  assert.equal((await service.catalog(second({}))).plans.length,0);
+});
+
+test('a purchased plan is app-wide and does not depend on selecting or changing a company',async()=>{
+  await db.doc('mlmprofiles/profile_a').delete();
+  const order=await create(await quote());
+  assert.equal(order.scope,'app');assert.equal(order.companyId,'');
+  await verify(order,capture(order));
+  const first=(await service.entitlement(req({}))).entitlement;
+  await db.doc('mlmprofiles/profile_a').set({mobile:mobileNo,uid:UID,companyId:'company_b'});
+  const after=(await service.entitlement(req({}))).entitlement;
+  assert.equal(after.scope,'app');assert.equal(after.expiresAtMs,first.expiresAtMs);assert.equal(after.grants.length,1);
+  assert.equal((await service.history(req({}))).items.length,1);
+});
+
+test('only authorized Admin can CRUD the single app catalog with optimistic version checks',async()=>{
+  process.env.GCLOUD_PROJECT=PROJECT;
+  const handlers=functionsRequire('./index');
+  await db.doc('_panelSessions/plan_admin').set({panel:'admin',revoked:false,expiresAt:Timestamp.fromMillis(Date.now()+3600000)});
+  const command=data=>({data,auth:{uid:'plan_admin',token:{panel:'admin',role:'Admin',actorType:'staff',tabs:['companies']}}});
+  const initial=await handlers.panelAppPlans.run(command({}));assert.equal(initial.version,1);
+  const updated=await handlers.panelSaveAppPlans.run(command({plans:[{...plan,PlanAmount:1500}],expectedVersion:1}));
+  assert.equal(updated.version,2);assert.equal(updated.plans[0].PlanAmount,1500);
+  assert.equal((await db.doc('mlmcomp/company_a').get()).data().Plans[0].PlanAmount,'1000');
+  await assert.rejects(handlers.panelSaveAppPlans.run(command({plans:[],expectedVersion:1})),{code:'failed-precondition'});
+  await assert.rejects(handlers.panelSaveAppPlans.run(command({plans:[{...plan,Day_value:-1}],expectedVersion:2})),{code:'failed-precondition'});
+  const denied=command({});denied.auth.token.tabs=['userdashboard'];
+  await assert.rejects(handlers.panelAppPlans.run(denied),{code:'permission-denied'});
+  await assert.rejects(handlers.panelAppPlans.run({data:{}}),{code:'unauthenticated'});
+  assert.equal((await handlers.panelSaveAppPlans.run(command({plans:[],expectedVersion:2}))).plans.length,0);
+});
+
+test('company metadata saves preserve old plan records but cannot set app plan prices',async()=>{
+  process.env.GCLOUD_PROJECT=PROJECT;
+  const handlers=functionsRequire('./index');
+  await db.doc('_panelSessions/company_admin').set({panel:'admin',revoked:false,expiresAt:Timestamp.fromMillis(Date.now()+3600000)});
+  const company={name:'Company A renamed',active:true,launched:true};
+  const command={data:{companyId:'company_a',expectedPlansVersion:0,company},auth:{uid:'company_admin',token:{panel:'admin',role:'Admin',actorType:'staff',tabs:['companies']}}};
+  await handlers.panelSavePaymentCompany.run(command);
+  assert.equal((await db.doc('mlmcomp/company_a').get()).data().Plans[0].PlanAmount,'1000');
+  assert.equal((await db.doc('appPlans/main').get()).data().Plans[0].PlanAmount,'1000');
+  await assert.rejects(handlers.panelSavePaymentCompany.run({...command,data:{...command.data,company:{...company,Plans:[{...plan,PlanAmount:1}]}}}),{code:'invalid-argument'});
+});
+
+test('legacy paid allowances migrate once with their balances, validity and test/live isolation intact',async()=>{
+  const legacyId='p_'+'b'.repeat(36);const expires=time+10*D.DAY_MS;
+  const price=D.calculatePrice(plan);
+  await db.doc('paymentPurchases/'+legacyId).set({id:legacyId,uid:UID,mobileNo,companyId:'company_a',companyName:'Company A',plan,price,commissions:[],mode:'test',keyId:config.keyId,status:'paid',paymentId:'pay_legacy',orderId:'order_legacy',subscriptionId:'rzp_p_legacy',createdAtMs:time-1000,startsAtMs:time-1000,subscriptionExpiresAtMs:expires,refundedPaise:0});
+  const legacyRef=db.doc('paymentEntitlements/'+D.hash(`test:${UID}:company_a`));
+  await legacyRef.set({uid:UID,mobileNo,companyId:'company_a',grants:[{purchaseId:legacyId,serviceType:'poster',startsAtMs:time-1000,expiresAtMs:expires,remainingDownloads:17,unlimitedDownloads:false,revoked:false}]});
+  await db.doc('paymentTestSubscriptions/rzp_p_legacy').set({uid:UID,mobileNo,Active:true,Expire:false});
+  await db.doc('paymentEntitlements/'+D.hash(`live:${UID}:company_a`)).set({uid:UID,grants:[{purchaseId:'p_live_only',startsAtMs:time,expiresAtMs:expires,remainingDownloads:99999,revoked:false}]});
+  let ent=(await service.entitlement(req({}))).entitlement;
+  assert.equal(ent.grants.length,1);assert.equal(ent.remainingDownloads,17);assert.equal(ent.expiresAtMs,expires);
+  ent=(await service.entitlement(req({}))).entitlement;assert.equal(ent.grants.length,1);
+  const order=await create(await quote());await verify(order,capture(order));
+  ent=(await service.entitlement(req({}))).entitlement;
+  assert.equal(ent.grants.length,2);assert.equal(ent.grants[1].startsAtMs,expires);
+  orders.set('order_legacy',{id:'order_legacy',amount:price.totalPaise,currency:'INR',receipt:legacyId,status:'paid',amount_paid:price.totalPaise,amount_due:0,notes:{purchaseId:legacyId,ownerHash:D.hash(UID)}});
+  const oldPayment={id:'pay_legacy',order_id:'order_legacy',amount:price.totalPaise,currency:'INR',status:'captured',captured:true,amount_refunded:100};payments.set(oldPayment.id,oldPayment);
+  await service.webhook({event:'refund.processed',payload:{refund:{entity:{payment_id:oldPayment.id}}}},'refund_legacy');
+  ent=(await service.entitlement(req({}))).entitlement;
+  assert.equal(ent.grants.find(g=>g.purchaseId===legacyId).revoked,true);
+  assert.equal((await legacyRef.get()).data().grants[0].revoked,true);
+});
+
+test('an unfinished order from the old company-based release blocks a second new app order',async()=>{
+  const order=await create(await quote());
+  await db.doc('paymentPurchases/'+order.purchaseId).update({scope:FieldValue.delete(),companyId:'company_a',companyName:'Company A',quoteId:'a'.repeat(64)});
+  await db.doc('_paymentCheckoutLocks/'+D.hash(`test:${UID}:app:mlmlive`)).delete();
+  await assert.rejects(create(await quote(),'new_global_attempt'),{code:'failed-precondition'});
+  assert.equal(posts,1);
+});
+
+test('a known test purchase ID cannot produce a success response from live payment status',async()=>{
+  const order=await create(await quote());await verify(order,capture(order));
+  config.mode='live';config.keyId='rzp_live_example';gateway.keyId=config.keyId;
+  await assert.rejects(service.status(req({purchaseId:order.purchaseId})),{code:'not-found'});
 });

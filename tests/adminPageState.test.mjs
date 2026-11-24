@@ -3,7 +3,7 @@ import test from 'node:test';
 import { ADMIN_PAGE_PATHS, canonicalAdminPage, adminWorkspaceKey, adminNavigationId } from '../src/Utils/adminPageState.js';
 
 test('only the bounded sidebar pages are retained; edit/create forms are never cached as separate records', () => {
-  assert.equal(new Set(ADMIN_PAGE_PATHS).size, 17);
+  assert.equal(new Set(ADMIN_PAGE_PATHS).size, 18);
   for (const path of ADMIN_PAGE_PATHS) assert.equal(canonicalAdminPage(path), path);
   for (const path of ['/companies/add', '/companies/edit/one', '/templates/edit/two', '/graphics/add', '/login', '/unknown']) {
     assert.equal(canonicalAdminPage(path), null);
@@ -28,6 +28,8 @@ test('sidebar/header selection follows direct links and browser navigation, incl
   assert.equal(adminNavigationId('/'), 'dashboard');
   assert.equal(adminNavigationId('/dashboard'), 'templates');
   assert.equal(adminNavigationId('/companies/edit/id'), 'companies');
+  assert.equal(canonicalAdminPage('/plans/'), '/plans');
+  assert.equal(adminNavigationId('/plans'), 'plans');
   assert.equal(adminNavigationId('/graphics/edit/id'), 'Graphics');
   assert.equal(adminNavigationId('/delete-requests'), 'delete_requests');
 });

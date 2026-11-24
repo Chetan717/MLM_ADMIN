@@ -80,7 +80,7 @@ export default function useUnsavedFormGuard({ form, ready = true, saving = false
     const onPop = () => {
       if (allowed.current || !dirtyRef.current) return;
       window.history.pushState(marker, '', window.location.href);
-      setPending(window.location.pathname.startsWith('/companies') ? '/companies' : window.location.pathname.startsWith('/graphics') ? '/graphics' : '/templates');
+      setPending(window.location.pathname.startsWith('/plans') ? '/plans' : window.location.pathname.startsWith('/companies') ? '/companies' : window.location.pathname.startsWith('/graphics') ? '/graphics' : '/templates');
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);

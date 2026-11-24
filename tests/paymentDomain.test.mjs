@@ -87,3 +87,17 @@ test('combo queues each service independently and refund revokes both service gr
   assert.equal(revoked.services.poster.status, 'active');
   assert.equal(revoked.services.video.status, 'expired');
 });
+
+test('app-wide entitlements contain no company boundary and retain service renewals',()=>{
+  const time=1800000000000;
+  const p={id:'p_app',uid:'u',mobileNo:'9999999999',scope:'app',mode:'test',appId:'mlmlive',orderId:'order_app',plan:{...plan,serviceType:'combo'}};
+  const first=D.nextEntitlement(null,p,time);
+  const second=D.nextEntitlement(first,{...p,id:'p_renew'},time+1000);
+  assert.equal(second.scope,'app');assert.equal(second.appId,'mlmlive');assert.equal('companyId' in second,false);
+  assert.equal(second.grants.length,4);assert.equal(second.services.video.expiresAtMs,time+60*D.DAY_MS);
+});
+test('the central catalog namespace gives legacy app rows stable identifiers',()=>{
+ const a=D.appPlans({Plans:[plan]}),b=D.appPlans({Plans:[plan]});
+ assert.equal(a[0].planId,b[0].planId);
+ assert.deepEqual(D.appPlans(null),[]);
+});

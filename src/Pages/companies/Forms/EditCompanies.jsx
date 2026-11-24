@@ -1,5 +1,4 @@
-import PlanServiceFields from "./PlanServiceFields";
-import { createPlanId } from "../../../Utils/createPlanId.js";
+
 import SearchableSelect from "../../../components/SearchableSelect.jsx";
 import { notifyAdminTabUpdates } from "../../../Utils/adminTabUpdates.js";
 import useUnsavedFormGuard from "../../../Utils/useUnsavedFormGuard";
@@ -28,18 +27,6 @@ import {
 } from "@gravity-ui/icons";
 import ImageUploadInput from "../../../Utils/Imageuploadinput";
 
-const DURATION_OPTIONS = [
-  { name: "1 Month",   Day_value: 30      },
-  { name: "3 Month",   Day_value: 91      },
-  { name: "6 Month",   Day_value: 182     },
-  { name: "1 Year",    Day_value: 365     },
-  { name: "2 Year",    Day_value: 730     },
-  { name: "3 Year",    Day_value: 1095    },
-  { name: "Unlimited", Day_value: 1000000 },
-];
-
-const PLAN_TYPES = ["Basic", "Pro", "Standard", "Annual Plan", "Unlimited"];
-
 const uid            = () => Math.random().toString(36).slice(2, 9);
 const emptyLink      = () => ({ id: uid(), link: "", size: "" });
 const emptyTopupLine = () => ({ id: uid(), name: "", link: "" });
@@ -47,18 +34,6 @@ const emptyProfile   = () => ({ id: uid(), profilename: "", profileimage: "" });
 const emptyImgEntry  = () => ({ id: uid(), url: "" });
 const emptyTraining  = () => ({ id: uid(), trainingname: "", images: [emptyImgEntry()] });
 const emptyMeeting   = () => ({ id: uid(), meetingname:  "", images: [emptyImgEntry()] });
-const emptyPlan      = () => ({
-  _key: uid(), planId: createPlanId(), serviceType: "poster", unlimitedDownloads: false, PlanName: "", PlanAmount: "", Duration: "", Day_value: "",
-  Type: "", downloads: "", image_url: "", Launch: true, Description: "",
-});
-
-const normalisePlans = (arr) =>
-  (arr || []).map((p) => ({
-    _key: uid(), planId: p.planId || "", serviceType: p.serviceType || "poster", unlimitedDownloads: p.unlimitedDownloads === true, PlanName: p.PlanName || "", PlanAmount: p.PlanAmount ?? "",
-    Duration: p.Duration || "", Day_value: p.Day_value ?? "", Type: p.Type || "",
-    downloads: p.downloads ?? "", image_url: p.image_url || "",
-    Launch: p.Launch ?? true, Description: p.Description || "",
-  }));
 
 const normaliseLinks = (arr) =>
   (arr || []).map((item) =>
@@ -430,105 +405,6 @@ function MeetingField({ items, onChange }) {
   );
 }
 
-function PlanRow({ plan, idx, total, onChange, onRemove }) {
-  const [open, setOpen] = useState(false);
-  const update = useCallback((field, val) => onChange(plan._key, field, val), [plan._key, onChange]);
-  const handleDurationChange = useCallback((e) => {
-    const selected = DURATION_OPTIONS.find((d) => d.name === e.target.value);
-    onChange(plan._key, "Duration",  selected?.name      || "");
-    onChange(plan._key, "Day_value", selected?.Day_value ?? "");
-  }, [plan._key, onChange]);
-
-  return (
-    <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
-      <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-800/60 cursor-pointer select-none" onClick={() => setOpen((p) => !p)}>
-        <span className="min-w-[22px] h-6 rounded-md bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[10px] font-bold flex items-center justify-center flex-shrink-0">{idx + 1}</span>
-        <span className="flex-1 text-sm font-medium text-gray-700 dark:text-gray-300 truncate">
-          {plan.PlanName || `Plan ${idx + 1}`}
-          {plan.PlanAmount && <span className="text-gray-400 ml-2 font-normal">₹{plan.PlanAmount}</span>}
-        </span>
-        {plan.Type && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400 border border-violet-100 dark:border-violet-500/20 flex-shrink-0">{plan.Type}</span>}
-        {plan.Duration && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-400 border border-sky-100 dark:border-sky-500/20 flex-shrink-0">{plan.Duration}</span>}
-        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold flex-shrink-0 ${plan.Launch ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400" : "bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500"}`}>{plan.Launch ? "Published" : "Hidden"}</span>
-        {total > 1 && (
-          <button type="button" onClick={(e) => { e.stopPropagation(); onRemove(plan._key); }} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors flex-shrink-0">
-            <TrashBin className="w-3.5 h-3.5" />
-          </button>
-        )}
-        <span className="text-gray-400 flex-shrink-0">{open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}</span>
-      </div>
-      {open && (
-        <div className="p-4 space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="flex flex-col gap-1.5"><FieldLabel required>Plan Name</FieldLabel><input type="text" value={plan.PlanName} onChange={(e) => update("PlanName", e.target.value)} placeholder="e.g. Gold Plan…" className={inputCls} /></div>
-            <div className="flex flex-col gap-1.5"><FieldLabel required>Plan Amount (₹)</FieldLabel><input type="number" value={plan.PlanAmount} onChange={(e) => update("PlanAmount", e.target.value)} placeholder="e.g. 999" className={inputCls} /></div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="flex flex-col gap-1.5">
-              <FieldLabel required>Duration</FieldLabel>
-              <div className="relative">
-                <SearchableSelect sortOrder="original" value={plan.Duration} onChange={handleDurationChange} className={selectCls}>
-                  <option value="">Select duration…</option>
-                  {DURATION_OPTIONS.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
-                </SearchableSelect>
-                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              </div>
-              {plan.Day_value !== "" && <p className="text-[11px] text-gray-400 flex items-center gap-1"><span className="text-violet-500 font-medium">{plan.Day_value}</span> days stored in DB</p>}
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <FieldLabel>Type</FieldLabel>
-              <div className="relative">
-                <SearchableSelect value={plan.Type} onChange={(e) => update("Type", e.target.value)} className={selectCls}>
-                  <option value="">Select type…</option>
-                  {PLAN_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                </SearchableSelect>
-                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              </div>
-            </div>
-          </div>
-          <div className="flex flex-col gap-1.5"><FieldLabel>Downloads</FieldLabel><input type="number" value={plan.downloads} onChange={(e) => update("downloads", e.target.value)} placeholder="e.g. 100" className={inputCls} /></div>
-          <PlanServiceFields plan={plan} update={update} inputCls={inputCls} />
-          <div className="flex flex-col gap-1.5"><FieldLabel>Plan Image</FieldLabel><ImageUploadInput value={plan.image_url} onChange={(url) => update("image_url", url)} storagePath="companies/plans" placeholder="Paste URL or click ↑ to upload" /></div>
-          <div className="flex flex-col gap-1.5">
-            <FieldLabel>Launch</FieldLabel>
-            <div className="flex items-center gap-6 p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-800/40">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <span onClick={() => update("Launch", true)} className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer ${plan.Launch === true ? "border-violet-600 bg-violet-600" : "border-gray-300 dark:border-gray-600 hover:border-violet-400"}`}>
-                  {plan.Launch === true && <span className="w-2 h-2 rounded-full bg-white block" />}
-                </span>
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300 select-none">Published</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <span onClick={() => update("Launch", false)} className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer ${plan.Launch === false ? "border-red-500 bg-red-500" : "border-gray-300 dark:border-gray-600 hover:border-red-400"}`}>
-                  {plan.Launch === false && <span className="w-2 h-2 rounded-full bg-white block" />}
-                </span>
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300 select-none">Hidden</span>
-              </label>
-              <span className={`ml-auto px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${plan.Launch ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400" : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"}`}>{plan.Launch ? "Available for purchase" : "Hidden from app"}</span>
-            </div>
-          </div>
-          <div className="flex flex-col gap-1.5"><FieldLabel>Description</FieldLabel><textarea rows={3} value={plan.Description} onChange={(e) => update("Description", e.target.value)} placeholder="Describe what this plan includes…" className={`${inputCls} resize-none`} /></div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function PlansField({ items, onChange }) {
-  const handleFieldChange = useCallback((key, field, val) => { onChange(items.map((p) => (p._key === key ? { ...p, [field]: val } : p))); }, [items, onChange]);
-  const handleAdd    = useCallback(() => onChange([...items, emptyPlan()]), [items, onChange]);
-  const handleRemove = useCallback((key) => onChange(items.filter((p) => p._key !== key)), [items, onChange]);
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2"><CreditCard className="w-4 h-4 text-violet-500" /><h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Plans <span className="text-xs text-gray-400 font-normal ml-1">({items.length})</span></h2></div>
-        <button type="button" onClick={handleAdd} className="flex items-center gap-1 text-xs text-violet-600 dark:text-violet-400 font-medium hover:underline"><CirclePlus className="w-3.5 h-3.5" />Add Plan</button>
-      </div>
-      <div className="space-y-2">{items.map((plan, idx) => <PlanRow key={plan._key} plan={plan} idx={idx} total={items.length} onChange={handleFieldChange} onRemove={handleRemove} />)}</div>
-    </div>
-  );
-}
-
 function DeleteModal({ companyName, onConfirm, onCancel, loading }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -579,7 +455,7 @@ export default function EditCompanies() {
             name: d.name || "", address: d.address || "", owner: d.owner || "", designation: d.designation || "",
             logos:      normaliseLinks(d.logos).length          ? normaliseLinks(d.logos)          : [emptyLink()],
             topuplines: normaliseTopupLines(d.topuplines).length ? normaliseTopupLines(d.topuplines) : [emptyTopupLine()],
-            Plans:      normalisePlans(d.Plans).length          ? normalisePlans(d.Plans)          : [emptyPlan()],
+
             profile:    normaliseProfiles(d.profile).length     ? normaliseProfiles(d.profile)     : [emptyProfile()],
             active: d.active ?? false, launched: d.launched ?? false,
             trainings: normaliseTrainings(d.trainings).length ? normaliseTrainings(d.trainings) : [emptyTraining()],
@@ -602,13 +478,13 @@ export default function EditCompanies() {
     if (!form?.name?.trim()) { setError("Company name is required."); return; }
     setSaveLoading(true); setError(null);
     try {
-      const cleanPlans = form.Plans.map(({ _key, ...rest }) => rest);
+
       await httpsCallable(functions, "panelSavePaymentCompany")({ companyId: id, expectedPlansVersion: plansVersion, company: {
         name: form.name.trim(), address: form.address.trim(), owner: form.owner.trim(), designation: form.designation.trim(),
         logos:      form.logos.filter((l) => l.link.trim()).map(({ link, size }) => ({ link, size: size || "" })),
         topuplines: form.topuplines.filter((t) => t.name.trim() || t.link.trim()).map((t) => ({ name: t.name.trim(), link: t.link.trim() })),
         active: form.active, launched: form.launched,
-        Plans:      cleanPlans,
+
         profile:    form.profile.filter((p) => p.profilename.trim()).map(({ id: _id, ...p }) => ({ profilename: p.profilename.trim(), profileimage: p.profileimage || "" })),
         trainings:  form.trainings.filter((t) => t.trainingname.trim() || t.images.some((i) => i.url.trim())).map(({ id: _id, ...t }) => ({ trainingname: t.trainingname.trim(), trainingimages: t.images.filter((i) => i.url.trim()).map((i) => i.url) })),
         meetings:   form.meetings.filter((m) => m.meetingname.trim() || m.images.some((i) => i.url.trim())).map(({ id: _id, ...m }) => ({ meetingname: m.meetingname.trim(), meetingimages: m.images.filter((i) => i.url.trim()).map((i) => i.url) })),
@@ -699,10 +575,6 @@ export default function EditCompanies() {
             <SectionCard icon={<Persons className="w-4 h-4" />} title="Meetings" subtitle="Meeting sessions & images" badge={form.meetings.length || undefined}>
               <MeetingField items={form.meetings} onChange={setField("meetings")} />
               <p className="text-xs text-gray-400 pt-2">Add meeting sessions with their promotional images.</p>
-            </SectionCard>
-            <SectionCard icon={<CreditCard className="w-4 h-4" />} title="Plans" subtitle="Subscription plans for customers" badge={form.Plans.length || undefined}>
-              <PlansField items={form.Plans} onChange={setField("Plans")} />
-              <p className="text-xs text-gray-400 mt-3">Subscription plans for customers. Duration <span className="text-violet-500 font-medium">Day_value</span> is auto-saved to Firestore.</p>
             </SectionCard>
             <SectionCard icon={<Picture className="w-4 h-4" />} title="Logos" subtitle="Brand logo images" badge={form.logos.filter((l) => l.link.trim()).length || undefined}>
               <LinkArrayField label="Logo" items={form.logos} onChange={setField("logos")} storagePath="companies/logos" />

@@ -1,5 +1,5 @@
 export const ADMIN_PAGE_PATHS = ['/', '/companies', '/templates', '/graphics', '/marketing', '/removebg',
-  '/payments', '/userdashboard', '/leads', '/templatedata', '/adminmanagement', '/security', '/taskmanagement',
+  '/plans', '/payments', '/userdashboard', '/leads', '/templatedata', '/adminmanagement', '/security', '/taskmanagement',
   '/notifications', '/delete-requests', '/expense', '/popups'];
 export function canonicalAdminPage(pathname) {
   const path = pathname === '/' ? '/' : String(pathname || '').replace(/\/+$/, '');

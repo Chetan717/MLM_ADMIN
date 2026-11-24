@@ -1,0 +1,146 @@
+{
+  "release": "MLM LIVE Global App Plans — 24 November 2026",
+  "baseline": "Previous company-based plan integration source before this correction",
+  "scope": "One app-wide catalog, purchase/renewal/history/entitlements; safe old checkout and trusted entitlement migration",
+  "unchanged_baseline_files": 172,
+  "modified": [
+    {
+      "path": "PAYMENT_SECURITY_REVIEW.md",
+      "before_sha256": "b2af60b46b939a6242b514373c248996acda98a17cabbcaec8f4046d2065a101",
+      "after_sha256": "e558083b091794ba583e17327cab58109ec6d6c4e90833361e7c0469759477e8"
+    },
+    {
+      "path": "PAYMENT_VALIDATION.md",
+      "before_sha256": "2924394235d5587b16d92adf2f082b7f84dc971a00b5c6dbe2f2c60315081940",
+      "after_sha256": "fd4ebd0cb47ff627ebe94139635cd7409aaa7f8414ed21f2914bd231e48a4687"
+    },
+    {
+      "path": "PLAN_INTEGRATION_SETUP_HINDI.md",
+      "before_sha256": "3fea4ab5fd6e980ae9348a9dd31bb458936d59027896abc6a97bdda2a43f761e",
+      "after_sha256": "ccff9db5c6a374e2ed6a866dd126a62b57c92275a156c1ab1a3c35de08b52044"
+    },
+    {
+      "path": "RAZORPAY_SETUP_HINDI.md",
+      "before_sha256": "898226a7ba832231e34e643e4a7e50f91a5e968f428705ca21732da3239146e3",
+      "after_sha256": "6891f195ced2e85a7f5239f3e65a650b247c56b9a8e749e9423e63699479ac72"
+    },
+    {
+      "path": "firestore.indexes.json",
+      "before_sha256": "c3a4759b33a964e328d8923eb323ce9f8dc4d94ccccbc82ce635fd5cd71683a5",
+      "after_sha256": "8e1cb2b20aee43dfc54260c082f5f5f21666353d755371324e680c5b9c042406"
+    },
+    {
+      "path": "firestore.payment.rules",
+      "before_sha256": "8d87a3650254c266af1cd603d2c3e0877139e2fe125b87228a4d6995bba2ecbc",
+      "after_sha256": "f21961b4f3445b92e18f30767f50ed49bf51bfe31b7f75230dc6f1f96160798e"
+    },
+    {
+      "path": "firestore.rules",
+      "before_sha256": "e00e5351bb398a89657a273b1afc6e3bd873305a657389ff5e15ce4164589674",
+      "after_sha256": "b2947e3d96671d3cc7963e014236fe8c32588af651c63540eb58e2b651709cf1"
+    },
+    {
+      "path": "functions/paymentDomain.js",
+      "before_sha256": "828c37dc46bde955705e603c6d1001b2073f77663b7c563813aadc7cdda1d98b",
+      "after_sha256": "8551c0be24b419205d279b14579576b321415b57f3adf945408496b7bd7e0af8"
+    },
+    {
+      "path": "functions/paymentFunctions.js",
+      "before_sha256": "95fa3c23c7de4542389e54b2330acd6dc48985cf8ab17d0190736d9224486780",
+      "after_sha256": "6b2f5c7b2f9ad662459a5648f71bd1288071ba1c6f3cf4939e96485488a9ac32"
+    },
+    {
+      "path": "functions/paymentService.js",
+      "before_sha256": "85fb8b891e7abd41eeb9d9fdc3affece3ebe247dc917d39e063d3b64f98cfecb",
+      "after_sha256": "3459a075ace4aef5e51a59d23345200e557ad32159f76143658d07d09eca0fe9"
+    },
+    {
+      "path": "package.json",
+      "before_sha256": "1185c516cd21deda4809bf32404ad491fa7d4c6ecd1fffffdb93be890403e8e8",
+      "after_sha256": "8bf1798c6322e6590c4394ca36fc244de1f4f92601d229adfef7fed71ad8d87f"
+    },
+    {
+      "path": "src/App.jsx",
+      "before_sha256": "359f7bdac0e49d219a19232a46842c6d44bb524622d94b6693c595ce9a813e33",
+      "after_sha256": "5664e1108bc8e89365b96b445e4c81a38ff95731b2cfcde088ba11954e4ca691"
+    },
+    {
+      "path": "src/Layout.jsx",
+      "before_sha256": "6a13115264bf4136aa69c2ea5884422ac13ce99a1521935acae4c1a8851c9a07",
+      "after_sha256": "4375842319ae247a374c8fa650ac370855687f5645b464d3199a7a2052e0f01e"
+    },
+    {
+      "path": "src/Pages/Payments/Payments.jsx",
+      "before_sha256": "cbc0d64bc5878335a0b77b291f7e7ae6982008f5d7c0f541ad31d7db2c1ba427",
+      "after_sha256": "005d2a911dda5cc0c98a7fa65a939af2f311cb34a57a16637990d3e2e03e98b2"
+    },
+    {
+      "path": "src/Pages/companies/Forms/AddCompanies.jsx",
+      "before_sha256": "65c62542768802fe9da73656437609b241a13a19c8af98491fe4c1cff326c0b1",
+      "after_sha256": "7c90d84324863b5c8428ac14eaca4f0d906dc5609ce35644e5fb406601835c2a"
+    },
+    {
+      "path": "src/Pages/companies/Forms/EditCompanies.jsx",
+      "before_sha256": "4859b51d8762da5817999893fb4353e2ef369a4f332379d7f1fc58bcf6d1a52d",
+      "after_sha256": "0660fb648166bff546353de3b0240b88f398e4e0d235f7aaeceb311b67802dfa"
+    },
+    {
+      "path": "src/Utils/adminPageState.js",
+      "before_sha256": "d454f81c96fb6593294ac23c5f30d593e1832b66904e40a5653afca544e22b94",
+      "after_sha256": "fd7b889d5fb491a018b6df6a445d2a856770d7f6c73ea3d10b3aa6c476c49253"
+    },
+    {
+      "path": "src/Utils/useUnsavedFormGuard.jsx",
+      "before_sha256": "a3162d3e92271d54bb5f1ce27f53e17f163c55c634c08bc14bbdbb8f3583701e",
+      "after_sha256": "c652fe0ba83db4816e3bab9313215f09a40625c3b0ad5851119265c3f77ce4f2"
+    },
+    {
+      "path": "src/components/Sidebar.jsx",
+      "before_sha256": "df4d2b1ab08dccda673cdebec8f15e89804ee70785bf4464ad368d542bbaa74b",
+      "after_sha256": "075104acb0c9f9fd63c84f56a67651323a0b9e747e4499067cd3e509dc986391"
+    },
+    {
+      "path": "tests/adminPageState.test.mjs",
+      "before_sha256": "c7000235b0f221aec51f11a7855b0224d82b6f679b82654d1a6fcac1b0af5770",
+      "after_sha256": "1d872a0f4567abb4f569e604045cb83c50769141becb2444a8f576ca255758c4"
+    },
+    {
+      "path": "tests/payment.integration.mjs",
+      "before_sha256": "1bb50a483276c4871b41b56a8f24db199ed30f42551cd768e70228f232ee3864",
+      "after_sha256": "289c2ee4bc8d1e004762c82f0930a6c7761ff0e99a738141c08db3916f6ef752"
+    },
+    {
+      "path": "tests/paymentDomain.test.mjs",
+      "before_sha256": "69fd8970b453e45357c4897daf2e2b0e1cf3d4d0723f363fcbd589d05ded3afc",
+      "after_sha256": "d3af55c9bfe6cd6959d221b09049b3f2e2343bad413161d67daf4543fc1147f1"
+    }
+  ],
+  "added": [
+    {
+      "path": "GLOBAL_PLANS_SETUP_HINDI.md",
+      "sha256": "ccff9db5c6a374e2ed6a866dd126a62b57c92275a156c1ab1a3c35de08b52044"
+    },
+    {
+      "path": "firebase.production-rules-test.json",
+      "sha256": "24d86db6754148d076417c7fe50075c8cfb5d2a9c9f36fe91796e05eae2ac663"
+    },
+    {
+      "path": "src/Pages/Plans/AppPlans.jsx",
+      "sha256": "2c3900ce13ecf45bb11ae156db75c423290a680c3c16eb7b5c6d5af7617174ab"
+    },
+    {
+      "path": "src/Utils/createPlanId.js",
+      "sha256": "28327cf8ea415cbecd84ee6b436e337a33b489e2bf477d2d925e7a83b3149fb0"
+    },
+    {
+      "path": "tests/createPlanId.test.mjs",
+      "sha256": "5aff75053690c16d7cb88d1fa3193b096a573ea3fcabe4927af75f99acb6e238"
+    },
+    {
+      "path": "tests/productionRules.integration.mjs",
+      "sha256": "c8e3a7b263290b047acbb2a796f86c5a7dda1287a05ba15431ae4c121da50e6c"
+    }
+  ],
+  "removed": [],
+  "validation": "PAYMENT_VALIDATION.md"
+}

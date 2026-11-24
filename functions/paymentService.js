@@ -24,7 +24,9 @@ function createPaymentService({
   audit = () => {},
 }) {
   const ref = (collection, key) => db.collection(collection).doc(key);
-  const entitlementRef = (uid, companyId, mode = getConfig().mode) =>
+  const entitlementRef = (uid, mode = getConfig().mode) =>
+    ref(ENTITLEMENTS, D.hash(`${mode}:${uid}:app:mlmlive`));
+  const legacyEntitlementRef = (uid, companyId, mode) =>
     ref(ENTITLEMENTS, D.hash(`${mode}:${uid}:${companyId}`));
   const subscriptions = (purchase) =>
     purchase.mode === "test" ? "paymentTestSubscriptions"
@@ -113,76 +115,53 @@ function createPaymentService({
     });
     return owner;
   }
-  async function context(owner, companyId, reader = db) {
-    D.id(companyId, "company ID");
-    const [users, profiles, companySnapshot] = await Promise.all([
-      reader.get
-        ? reader.get(
-            db
-              .collection("users")
-              .where("mobileNo", "in", [owner.mobileNo, Number(owner.mobileNo)])
-              .limit(2),
-          )
-        : null,
-      reader.get
-        ? reader.get(
-            db
-              .collection("mlmprofiles")
-              .where("mobile", "in", [owner.mobileNo, Number(owner.mobileNo)])
-              .limit(3),
-          )
-        : null,
-      reader.get(ref("mlmcomp", companyId)),
+  async function context(owner, reader) {
+    const [users, catalogSnapshot] = await Promise.all([
+      reader.get(db.collection("users").where("mobileNo", "in", [owner.mobileNo, Number(owner.mobileNo)]).limit(2)),
+      reader.get(ref("appPlans", "main")),
     ]);
-    if (!users || users.size !== 1)
-      D.fail(
-        "failed-precondition",
-        "Account needs verification. Contact support.",
-      );
+    if (users.size !== 1) D.fail("failed-precondition", "Account needs verification. Contact support.");
     const user = users.docs[0].data();
-    if (
-      user.active === false ||
-      user.Active === false ||
-      user.blocked === true ||
-      user.deleted === true
-    )
+    if (user.active === false || user.Active === false || user.blocked === true || user.deleted === true)
       D.fail("permission-denied", "Account is not available for payment.");
-    if (user.uid && user.uid !== owner.uid)
-      D.fail("permission-denied", "Account identity mismatch.");
-    if (!profiles || profiles.empty || profiles.size >= 3)
-      D.fail(
-        "failed-precondition",
-        "Complete or verify your company profile before payment.",
-      );
-    const identities = profiles.docs.map((p) => p.data());
-    if (
-      identities.some(
-        (p) =>
-          (p.uid && p.uid !== owner.uid) ||
-          (p.companyId || p.company_id) !== companyId,
-      )
-    )
-      D.fail(
-        "permission-denied",
-        "Select the company saved in your MLM profile.",
-      );
-    const company = snapshotData(companySnapshot);
-    if (!company || company.active !== true || company.launched !== true)
-      D.fail("failed-precondition", "This company is not currently available.");
-    return {
-      ...owner,
-      userRef: users.docs[0].ref,
-      user,
-      company,
-      companyId,
-      companyRef: companySnapshot.ref,
-    };
+    if (user.uid && user.uid !== owner.uid) D.fail("permission-denied", "Account identity mismatch.");
+    return { ...owner, userRef: users.docs[0].ref, user, catalog: snapshotData(catalogSnapshot), scope: "app", appId: "mlmlive" };
+  }
+  // First use imports only already-paid grants of this UID and this payment
+  // mode. Existing balances/dates/revocations are copied from their ledger;
+  // company plan prices are never used as an app catalog or as new benefits.
+  async function loadAppEntitlement(tx, owner, snapshot, mode) {
+    if (snapshot?.exists && snapshot.data().scope === "app") return snapshot.data();
+    const paid = await tx.get(db.collection(PURCHASES).where("mode", "==", mode)
+      .where("uid", "==", owner.uid).where("status", "==", "paid").limit(101));
+    if (paid.size > 100) D.fail("resource-exhausted", "Existing paid history needs support-assisted entitlement migration.");
+    const legacy = paid.docs.map((d) => d.data()).filter((p) => p.scope !== "app" && p.companyId && p.paymentId);
+    const allowed = new Set(legacy.map((p) => p.id));
+    const companyIds = [...new Set(legacy.map((p) => p.companyId))];
+    const oldLedgers = await Promise.all(companyIds.map((id) => tx.get(legacyEntitlementRef(owner.uid, id, mode))));
+    const seen = new Set();
+    const grants = oldLedgers.flatMap((doc) => doc.exists ? doc.data().grants || [] : []).filter((g) => {
+      const key = `${g.purchaseId}:${g.serviceType || "poster"}`;
+      if (!allowed.has(g.purchaseId) || seen.has(key)) return false;
+      seen.add(key); return true;
+    });
+    return D.entitlementSummary({ uid: owner.uid, mobileNo: owner.mobileNo, scope: "app", appId: "mlmlive", mode,
+      legacyMigratedAtMs: now(), grants }, now());
+  }
+  async function readAppEntitlement(owner) {
+    return db.runTransaction(async (tx) => {
+      const target = entitlementRef(owner.uid);
+      const snapshot = await tx.get(target);
+      const result = await loadAppEntitlement(tx, owner, snapshot, getConfig().mode);
+      if (!snapshot.exists || snapshot.data().scope !== "app") tx.set(target, result);
+      return D.entitlementSummary(result, now());
+    });
   }
   // Query.get and Transaction.get expose different APIs; normalize read access.
   const directReader = { get: (object) => object.get() };
   async function priceContext(owner, data, reader = directReader) {
-    const ctx = await context(owner, data.companyId, reader);
-    const plan = D.companyPlans(ctx.company, ctx.companyId).find(
+    const ctx = await context(owner, reader);
+    const plan = D.appPlans(ctx.catalog).find(
       (p) => p.planId === data.planId,
     );
     if (!plan || !plan.Launch)
@@ -197,15 +176,8 @@ function createPaymentService({
       if (snap.size !== 1 || snap.docs[0].data().active !== true)
         D.fail("failed-precondition", "Coupon is invalid or inactive.");
       coupon = { ...snap.docs[0].data(), id: snap.docs[0].id };
-      if (
-        (coupon.companyId && coupon.companyId !== ctx.companyId) ||
-        (Array.isArray(coupon.companyIds) &&
-          !coupon.companyIds.includes(ctx.companyId))
-      )
-        D.fail(
-          "failed-precondition",
-          "Coupon is not available for this company.",
-        );
+      if (Array.isArray(coupon.planIds) && !coupon.planIds.includes(plan.planId))
+        D.fail("failed-precondition", "Coupon is not available for this app plan.");
       let memberId = coupon.assigned_user?.id;
       while (memberId) {
         D.id(memberId, "marketing member");
@@ -245,7 +217,8 @@ function createPaymentService({
       JSON.stringify({
         mode: getConfig().mode,
         uid: owner.uid,
-        companyId: ctx.companyId,
+        scope: "app",
+        appId: "mlmlive",
         plan,
         price,
         code,
@@ -266,8 +239,9 @@ function createPaymentService({
     return {
       mode: getConfig().mode,
       quoteId: ctx.quoteId,
-      companyId: ctx.companyId,
-      companyName: ctx.company.name,
+      scope: "app",
+      appId: "mlmlive",
+      appName: "MLM LIVE",
       plan: ctx.plan,
       price: ctx.price,
       couponCode: ctx.couponCode,
@@ -275,22 +249,16 @@ function createPaymentService({
     };
   }
   async function catalog(request) {
-    D.input(request.data, ["companyId"]);
+    D.input(request.data || {}, []);
     const owner = await rate(request, "catalog");
-    const ctx = await context(owner, request.data.companyId, directReader);
-    // One company document, not a plans collection or live snapshot listener.
-    return {
-      mode: getConfig().mode,
-      companyId: ctx.companyId,
-      companyName: ctx.company.name,
-      plans: D.companyPlans(ctx.company, ctx.companyId).filter((p) => p.Launch),
-      suggestedCoupon: /^[A-Z0-9]{6}$/.test(ctx.user.mteamCouponCode || "")
-        ? ctx.user.mteamCouponCode
-        : "",
-    };
+    const ctx = await context(owner, directReader);
+    return { mode: getConfig().mode, scope: "app", appId: "mlmlive", appName: "MLM LIVE",
+      version: Number(ctx.catalog?.version || 0),
+      plans: D.appPlans(ctx.catalog).filter((p) => p.Launch),
+      suggestedCoupon: /^[A-Z0-9]{6}$/.test(ctx.user.mteamCouponCode || "") ? ctx.user.mteamCouponCode : "" };
   }
   async function quote(request) {
-    D.input(request.data, ["companyId", "planId", "couponCode"]);
+    D.input(request.data, ["planId", "couponCode"]);
     const owner = await rate(request, "quote");
     D.id(request.data.planId, "plan ID");
     return publicQuote(await priceContext(owner, request.data));
@@ -301,8 +269,11 @@ function createPaymentService({
       orderId: purchase.orderId || "",
       keyId: purchase.keyId,
       status: purchase.status,
-      companyId: purchase.companyId,
-      companyName: purchase.companyName,
+      scope: purchase.scope || "company",
+      appId: purchase.appId || "",
+      appName: "MLM LIVE",
+      companyId: purchase.companyId || "",
+      companyName: purchase.scope === "app" ? "MLM LIVE" : purchase.companyName,
       plan: purchase.plan,
       price: purchase.price,
       mode: purchase.mode,
@@ -317,7 +288,6 @@ function createPaymentService({
   async function create(request) {
     guardConfig();
     D.input(request.data, [
-      "companyId",
       "planId",
       "couponCode",
       "quoteId",
@@ -334,7 +304,7 @@ function createPaymentService({
     const purchaseRef = ref(PURCHASES, purchaseId);
     const lockRef = ref(
       "_paymentCheckoutLocks",
-      D.hash(`${getConfig().mode}:${owner.uid}:${request.data.companyId}`),
+      D.hash(`${getConfig().mode}:${owner.uid}:app:mlmlive`),
     );
     let selected;
     try {
@@ -347,8 +317,7 @@ function createPaymentService({
         if (same) {
           if (
             same.uid !== owner.uid ||
-            same.quoteId !== request.data.quoteId ||
-            same.companyId !== request.data.companyId
+            same.quoteId !== request.data.quoteId
           )
             D.fail(
               "permission-denied",
@@ -356,7 +325,13 @@ function createPaymentService({
             );
           return { purchase: same, isNew: false };
         }
-        const previousId = lock.data()?.purchaseId;
+        let previousId = lock.data()?.purchaseId;
+        if (!lock.exists) {
+          const older = await tx.get(db.collection(PURCHASES).where("mode", "==", getConfig().mode)
+            .where("uid", "==", owner.uid).where("status", "in", ["created", "pending", "creating", "creation_unknown"]).limit(101));
+          if (older.size > 100) D.fail("resource-exhausted", "Check your pending payment history before starting a new checkout.");
+          previousId = older.docs.map((d) => d.data()).find((p) => p.expiresAtMs > time || ["creating", "creation_unknown"].includes(p.status))?.id;
+        }
         const previous = previousId
           ? snapshotData(await tx.get(ref(PURCHASES, previousId)))
           : null;
@@ -390,8 +365,10 @@ function createPaymentService({
           uid: owner.uid,
           mobileNo: owner.mobileNo,
           userName: String(ctx.user.name || "").slice(0, 100),
-          companyId: ctx.companyId,
-          companyName: ctx.company.name,
+          scope: "app",
+          appId: "mlmlive",
+          companyId: "",
+          companyName: "MLM LIVE",
           plan: ctx.plan,
           price: ctx.price,
           commissions: ctx.commissions,
@@ -505,7 +482,7 @@ function createPaymentService({
     const purchase = snapshotData(
       await ref(PURCHASES, D.id(purchaseId, "purchase ID")).get(),
     );
-    if (!purchase || purchase.uid !== owner.uid)
+    if (!purchase || purchase.uid !== owner.uid || purchase.mode !== getConfig().mode)
       D.fail("not-found", "Purchase was not found.");
     return purchase;
   }
@@ -513,6 +490,11 @@ function createPaymentService({
     const date = new Date(purchase.createdAtMs + 330 * 60000)
       .toISOString()
       .slice(0, 10);
+    if (purchase.scope === "app") return [
+      ref("paymentStats", `${purchase.mode}_global`),
+      ref("paymentStats", `${purchase.mode}_app_mlmlive`),
+      ref("paymentDaily", `${purchase.mode}_${date}_app_mlmlive`),
+    ];
     return [
       ref("paymentStats", `${purchase.mode}_global`),
       ref(
@@ -559,11 +541,7 @@ function createPaymentService({
         return checkout(purchase);
       }
       const paymentRef = ref("_razorpayPayments", payment.id),
-        entRef = entitlementRef(
-          purchase.uid,
-          purchase.companyId,
-          purchase.mode,
-        );
+        entRef = entitlementRef(purchase.uid, purchase.mode);
       const [paymentOwner, ent] = await Promise.all([
         tx.get(paymentRef),
         tx.get(entRef),
@@ -577,7 +555,8 @@ function createPaymentService({
         purchase.price.totalPaise,
         "refunded amount",
       );
-      const entitlement = D.nextEntitlement(snapshotData(ent), purchase, time);
+      const previousEntitlement = await loadAppEntitlement(tx, purchase, ent, purchase.mode);
+      const entitlement = D.nextEntitlement(previousEntitlement, { ...purchase, scope: "app" }, time);
       const grant = entitlement.grants.find(
         (g) => g.purchaseId === purchase.id,
       );
@@ -595,8 +574,10 @@ function createPaymentService({
         uid: purchase.uid,
         mobileNo: purchase.mobileNo,
         UserName: purchase.userName,
-        companyId: purchase.companyId,
-        company: purchase.companyName,
+        companyId: purchase.companyId || "",
+        company: purchase.scope === "app" ? "MLM LIVE" : purchase.companyName,
+        scope: "app",
+        appId: "mlmlive",
         plan: purchase.plan.PlanName,
         planId: purchase.plan.planId,
         planType: purchase.plan.Type,
@@ -845,14 +826,12 @@ function createPaymentService({
     return reconcile(purchase);
   }
   async function history(request) {
-    D.input(request.data, ["companyId", "cursor"]);
+    D.input(request.data || {}, ["cursor"]);
     const owner = await rate(request, "history");
-    const companyId = D.id(request.data.companyId, "company ID");
     let q = db
       .collection(PURCHASES)
       .where("mode", "==", getConfig().mode)
       .where("uid", "==", owner.uid)
-      .where("companyId", "==", companyId)
       .orderBy("createdAtMs", "desc")
       .orderBy("id", "desc")
       .limit(21);
@@ -870,7 +849,7 @@ function createPaymentService({
     }
     const [rows, entitlement] = await Promise.all([
       q.get(),
-      entitlementRef(owner.uid, companyId).get(),
+      readAppEntitlement(owner),
     ]);
     const items = rows.docs.slice(0, 20).map((s) => s.data());
     return {
@@ -883,9 +862,7 @@ function createPaymentService({
         refundedPaise: p.refundedPaise || 0,
         couponCode: p.couponCode || "",
       })),
-      entitlement: entitlement.exists
-        ? D.entitlementSummary(entitlement.data(), now())
-        : null,
+      entitlement,
       cursor:
         rows.size > 20
           ? { createdAtMs: items.at(-1).createdAtMs, id: items.at(-1).id }
@@ -893,9 +870,8 @@ function createPaymentService({
     };
   }
   async function legacyHistory(request) {
-    D.input(request.data, ["companyId", "cursor"]);
-    const owner = await rate(request, "history"),
-      companyId = D.id(request.data.companyId);
+    D.input(request.data || {}, ["cursor"]);
+    const owner = await rate(request, "history");
     let q = db
       .collection("subscription")
       .where("mobileNo", "in", [owner.mobileNo, Number(owner.mobileNo)])
@@ -912,8 +888,7 @@ function createPaymentService({
       items: page
         .filter(
           (s) =>
-            s.data().source !== "razorpay_server_v1" &&
-            (s.data().companyId === companyId || !s.data().companyId),
+            s.data().source !== "razorpay_server_v1",
         )
         .map((s) => {
           const value = s.data();
@@ -940,17 +915,9 @@ function createPaymentService({
     };
   }
   async function entitlement(request) {
-    D.input(request.data, ["companyId"]);
+    D.input(request.data || {}, []);
     const owner = await rate(request, "entitlement");
-    const snapshot = await entitlementRef(
-      owner.uid,
-      D.id(request.data.companyId),
-    ).get();
-    return {
-      entitlement: snapshot.exists
-        ? D.entitlementSummary(snapshot.data(), now())
-        : null,
-    };
+    return { entitlement: await readAppEntitlement(owner) };
   }
   async function applyReversal(purchaseId, payment, disputed) {
     await db.runTransaction(async (tx) => {
@@ -973,12 +940,12 @@ function createPaymentService({
       const cumulative = Math.max(refundedPaise, purchase.refundedPaise || 0),
         delta = cumulative - (purchase.refundedPaise || 0);
       if (!delta && (!disputed || purchase.disputed)) return;
-      const entRef = entitlementRef(
-        purchase.uid,
-        purchase.companyId,
-        purchase.mode,
-      );
-      const entitlement = snapshotData(await tx.get(entRef));
+      const entRef = entitlementRef(purchase.uid, purchase.mode);
+      const entSnapshot = await tx.get(entRef);
+      const entitlement = await loadAppEntitlement(tx, purchase, entSnapshot, purchase.mode);
+      const legacyRef = purchase.scope !== "app" && purchase.companyId
+        ? legacyEntitlementRef(purchase.uid, purchase.companyId, purchase.mode) : null;
+      const legacyEnt = legacyRef ? snapshotData(await tx.get(legacyRef)) : null;
       const commissions = await Promise.all(
         purchase.commissions.map((row) =>
           tx.get(ref("paymentCommissions", `${purchase.id}_${row.memberId}`)),
@@ -1015,6 +982,8 @@ function createPaymentService({
         payment: disputed ? "Disputed" : "Refunded",
         refundedPaise: cumulative,
       });
+      if (legacyEnt) tx.set(legacyRef, D.entitlementSummary({ ...legacyEnt,
+        grants: legacyEnt.grants.map((g) => g.purchaseId === purchaseId ? { ...g, revoked: true } : g) }, now()));
       if (entitlement)
         tx.set(
           entRef,
@@ -1170,13 +1139,12 @@ function createPaymentService({
     return (await ref("paymentStats", key).get()).data() || {};
   }
   async function adminList(data) {
-    D.input(data, ["companyId", "status", "cursor"]);
+    D.input(data, ["status", "cursor"]);
     let q = db
       .collection(PURCHASES)
       .where("mode", "==", getConfig().mode)
       .orderBy("createdAtMs", "desc")
       .orderBy("id", "desc");
-    if (data.companyId) q = q.where("companyId", "==", D.id(data.companyId));
     if (data.status) {
       if (
         ![

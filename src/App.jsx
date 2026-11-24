@@ -28,12 +28,14 @@ import { lazy } from "react";
 const ExpenseManager = lazy(() => import("./Pages/ExpenseManager/ExpenseManager"));
 const PopupManagement = lazy(() => import("./Pages/Popups/PopupManagement"));
 const Payments = lazy(() => import("./Pages/Payments/Payments"));
+const AppPlans = lazy(() => import("./Pages/Plans/AppPlans"));
 
 import { useAdminAuth } from "./Auth/AdminAuthContext";
 import { adminWorkspaceKey } from "./Utils/adminPageState.js";
 import { RetainedAdminRoutes } from "./components/RetainedAdminViews.jsx";
 
 const ADMIN_PAGES = [
+  { path: "/plans", element: <AppPlans /> },
   { path: "/payments", element: <Payments /> },
   { path: "/", element: <Home /> },
   { path: "/companies", element: <CompaniesHome /> },

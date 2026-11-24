@@ -59,6 +59,7 @@ const ALL_NAV_ITEMS = [
   { icon: ChartTreemap,       label: "Marketing",              id: "marketing",       link: "/marketing" },
   { icon: ChartTreemap,       label: "Remove Background API",  id: "removebg",        link: "/removebg" },
   { iconComponent: BarChartIcon, label: "Subscription Dashboard", id: "userdashboard", link: "/userdashboard" },
+  { iconComponent: BarChartIcon, label: "App Plans", id: "plans", permissionId: "companies", link: "/plans" },
   { iconComponent: BarChartIcon, label: "Razorpay Payments", id: "userdashboard", link: "/payments" },
   { iconComponent: PersonIcon,   label: "User Leads",          id: "leads",           link: "/leads" },
   { iconComponent: ReportIcon,   label: "Template Data",       id: "templatedata",    link: "/templatedata" },
@@ -86,7 +87,7 @@ function getVisibleNavItems(admin) {
   return ALL_NAV_ITEMS.filter(item => {
     if (item.ownerOnly) return false;
     // Primary tab id match
-    if (assigned.includes(item.id)) return true;
+    if (assigned.includes(item.permissionId || item.id)) return true;
     // Alt IDs (e.g. templates_operation / templates_quality both show Templates nav)
     if (item.altIds && item.altIds.some(a => assigned.includes(a))) return true;
     return false;
@@ -162,7 +163,7 @@ export default function Sidebar({
             const RenderIcon = IconComp ? IconComp : Icon ? () => <Icon className="w-5 h-5" /> : null;
             return (
               <button
-                key={id}
+                key={link}
                 onClick={() => hanClick(link)}
                 className={[
                   "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group relative",

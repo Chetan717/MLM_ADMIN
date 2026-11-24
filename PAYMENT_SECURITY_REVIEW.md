@@ -1,15 +1,17 @@
 # Payment boundary and security review
 
-Implementation date: 13 November 2026. This is a code review and test report,
+Implementation updated: 24 November 2026 (central app plans). This is a code review and test report,
 not a penetration-test certificate or a guarantee against fraud.
 
 ## Server authority
 
-The client sends only company ID, stable plan ID, optional coupon, current quote
-digest and an opaque idempotency request ID. Extra money/identity fields are
-rejected. Firebase signed identity determines the buyer. A fresh server lookup
-of the user's company profile binds the company; unpublished company/plan and
-duplicate/ambiguous identity records fail closed.
+The client sends only a stable central plan ID, optional coupon, current quote
+digest and an opaque idempotency request ID. Extra money/identity/company fields
+are rejected. Firebase signed identity determines the buyer. A fresh server
+lookup verifies the active, unambiguous user account and reads `appPlans/main`.
+A company profile is not required for the catalog, checkout, history or
+app-wide entitlement. Published plans are shared by all app users. Only
+permission-checked Admin callables can modify the versioned central catalog.
 
 Plan amount, discount, GST, duration, downloads, marketing allocation and
 renewal dates come from server records. Financial calculations use integer
@@ -41,7 +43,7 @@ aggregates commit atomically. Duplicate callbacks/webhooks cannot grant twice.
 
 | Risk | Implemented control / deployment requirement |
 |---|---|
-| A01 Broken Access Control | Firebase auth, buyer ownership, company-profile binding, Admin session and tab checks, Master-only reconciliation, mandatory merged server-only Firestore rules |
+| A01 Broken Access Control | Firebase auth, buyer ownership, app-wide identity/mode isolation, Admin session and tab checks, Master-only reconciliation, mandatory merged server-only Firestore rules |
 | A02 Security Misconfiguration | Default-off payment creation, strict mode/key match, exact HTTPS CORS origins, security response headers; configured merchant risk/capture/webhooks required |
 | A03 Software Supply Chain Failures | Locked dependency updates, official patched SheetJS distribution, runtime npm audits; scheduled dependency review still required |
 | A04 Cryptographic Failures | Secrets in Firebase Secret Manager, server HMAC-SHA256, constant-time digest comparison, TLS-only fixed provider URL, hosted card collection |
@@ -62,7 +64,7 @@ aggregates commit atomically. Duplicate callbacks/webhooks cannot grant twice.
 - CAPTCHA/App Check integration and limited-use tokens have been removed from
   both frontends and payment/Admin callables at the owner's request. There is
   no device/app attestation gate. Firebase signed login, live Admin sessions,
-  company/ownership checks, server-side rate limits and payment verification
+  account/ownership checks, server-side rate limits and payment verification
   remain mandatory; CORS and hidden UI controls are not access checks.
 - Card/PAN/CVV data is collected by Razorpay, never these apps/functions.
   The application does not store payment signatures or raw webhook bodies.
@@ -72,7 +74,7 @@ aggregates commit atomically. Duplicate callbacks/webhooks cannot grant twice.
   periods keep their original dates. Dispute resolution requires support review.
 - Test/live purchases, queries, stats and entitlements are isolated; test
   subscription records cannot appear in production subscription queries.
-- New grants queue after the latest valid paid period of that company. A
+- New grants queue after the latest valid app-wide paid period for the same service. A
   previous Unlimited plan does not make a later limited plan Unlimited.
 - Plan price ceiling including GST: INR 100,000. Minimum payable INR 1;
   zero/100%-discount orders do not silently create free subscriptions.
@@ -82,18 +84,19 @@ aggregates commit atomically. Duplicate callbacks/webhooks cannot grant twice.
 ## Firestore read strategy
 
 No new live snapshot listener or background client polling loop was added.
-In-memory caches are keyed by verified UID + company and coalesce identical
-requests: catalog 60 seconds, history/entitlement 30 seconds. A confirmed
+In-memory caches are keyed by verified UID + app and coalesce identical
+requests: catalog five minutes and payment history 30 seconds. Test/live draft
+keys remain isolated; a server mode change invalidates affected cached data. A confirmed
 payment invalidates caches. Prices/permissions never rely on cached client data.
 
 | Operation | Bounded work |
 |---|---|
-| Catalog | Rate-limit transaction + one buyer query (max 2), one profile query (max 3), one company document |
-| Quote / order reservation | Same fresh identity/company lookup; optional one coupon query and bounded hierarchy chain; order reservation/lock documents |
+| Catalog | Rate-limit transaction + one buyer query (max 2), one central app catalog document |
+| Quote / order reservation | Same fresh account/catalog lookup; optional one coupon query and bounded hierarchy chain; order reservation/lock documents |
 | History | At most 21 purchase records + one entitlement; next page only on demand |
-| Earlier subscriptions | Separate explicit user action, max 21 legacy records per page; not read on every plans visit |
-| Expiry notice | One own-company entitlement + rate-limit transaction; uses shared short cache |
-| Admin payments | One aggregate + max 26 purchases; optional cached company directory; no users/subscription collection scan |
+| Earlier subscriptions | At most 21 legacy records per page, one-minute cache; further pages on demand |
+| Expiry notice | One own app-wide entitlement + rate-limit transaction; initial verified legacy migration bounded to 101 paid purchases, at most 100 migrated |
+| Admin payments | One aggregate + max 26 purchases; no company directory or users/subscription collection scan |
 | Webhook | One durable inbox create before acknowledgement; bounded provider calls/transactions in background trigger |
 | Recovery job | Max 25 due purchases each run, indexed queue and bounded provider calls; no users scan |
 
@@ -104,16 +107,21 @@ reporting behavior; this release does not claim to optimize the entire project.
 
 ## Remaining deployment/architecture boundaries
 
-The supplied archives did not include current production rules, the old
-external payment server, native app code or user-auth backend. Those cannot be
-audited or disabled from this workspace. Merge rules, disable old Admin-SDK
-payment writers, finish merchant risk/alert settings and run live
-purchase/refund acceptance tests before production activation.
+The corrected Admin archive contains the user-supplied full production rules
+merged with payment/catalog protections. The separately supplied native bridge
+remains compatible and is unchanged by this correction. The old external
+payment server and user-auth backend were not supplied; disable obsolete
+Admin-SDK payment writers through their hosting configuration. Deploy the
+corrected rules/indexes and all updated payment endpoints, then complete
+merchant/device purchase/refund acceptance checks before activation.
 
 The editor in the uploaded app is deliberately in free-export mode with public
 client-rendered assets. Payment integration does not convert that architecture
 into a secure paid-content gateway. Legacy subscriptions are available as
-historical records; migrating their benefits requires verified payment proofs.
+historical records; unverified PSERVER/manual benefits require payment proof.
+Earlier secure paid grants are migrated once into the app-wide ledger, retaining
+balances, dates and revocations with separate test/live ownership. Refunds revoke
+both migrated app grants and their original legacy grant when applicable.
 
 Rate limits and 3DS/provider risk checks reduce abuse; they do not make carding,
 fraud, compromised accounts or all infrastructure failures impossible.

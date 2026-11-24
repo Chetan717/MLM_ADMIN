@@ -127,6 +127,9 @@ function companyPlans(company, companyId) {
     fail("failed-precondition", "Duplicate plan IDs. Contact support.");
   return plans;
 }
+function appPlans(catalog) {
+  return companyPlans({ Plans: catalog?.Plans || [] }, "mlmlive_app");
+}
 function calculatePrice(plan, coupon = null) {
   const basePaise = money(plan.PlanAmount);
   const discountBps = coupon ? bps(coupon.user_discount) : 0;
@@ -261,7 +264,10 @@ function nextEntitlement(previous, purchase, now) {
     {
       uid: purchase.uid,
       mobileNo: purchase.mobileNo,
-      companyId: purchase.companyId,
+      ...(purchase.scope === "app"
+        ? { scope: "app", appId: "mlmlive", mode: purchase.mode,
+            legacyMigratedAtMs: previous?.legacyMigratedAtMs || now }
+        : { companyId: purchase.companyId }),
       grants,
       lastPurchaseId: purchase.id,
       lastOrderId: purchase.orderId,
@@ -311,6 +317,7 @@ module.exports = {
   couponCode,
   normalizePlan,
   companyPlans,
+  appPlans,
   calculatePrice,
   calculateCommissions,
   signatureValid,
