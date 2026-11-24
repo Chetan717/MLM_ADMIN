@@ -269,6 +269,7 @@ export default function Payments() {
                 <td className="px-4 py-3">
                   <p>{row.companyName}</p>
                   <p className="text-xs text-gray-400">{row.plan.PlanName}</p>
+                  <p className="text-xs text-violet-500">{{ poster: "Poster", video: "Video Editing", combo: "Poster + Video" }[row.plan.serviceType || "poster"]}</p>
                 </td>
                 <td className="px-4 py-3">{money(row.price.basePaise)}</td>
                 <td className="px-4 py-3">{money(row.price.discountPaise)}</td>

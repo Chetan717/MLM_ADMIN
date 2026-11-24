@@ -1,3 +1,5 @@
+import PlanServiceFields from "./PlanServiceFields";
+import { createPlanId } from "../../../Utils/createPlanId.js";
 import SearchableSelect from "../../../components/SearchableSelect.jsx";
 import { notifyAdminTabUpdates } from "../../../Utils/adminTabUpdates.js";
 import useUnsavedFormGuard from "../../../Utils/useUnsavedFormGuard";
@@ -48,7 +50,9 @@ const emptyTraining  = () => ({ id: uid(), trainingname: "", images: [emptyImgEn
 const emptyMeeting   = () => ({ id: uid(), meetingname:  "", images: [emptyImgEntry()] });
 const emptyPlan      = () => ({
   _key:        uid(),
-  planId:      crypto.randomUUID(),
+  planId:      createPlanId(),
+  serviceType: "poster",
+  unlimitedDownloads: false,
   PlanName:    "",
   PlanAmount:  "",
   Duration:    "",
@@ -475,7 +479,7 @@ function PlanRow({ plan, idx, total, onChange, onRemove }) {
         )}
 
         <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold flex-shrink-0 ${plan.Launch ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400" : "bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500"}`}>
-          {plan.Launch ? "Time" : "No-Time"}
+          {plan.Launch ? "Published" : "Hidden"}
         </span>
 
         {total > 1 && (
@@ -545,6 +549,7 @@ function PlanRow({ plan, idx, total, onChange, onRemove }) {
               placeholder="e.g. 100 (max downloads allowed)" className={inputCls} />
           </div>
 
+          <PlanServiceFields plan={plan} update={update} inputCls={inputCls} />
           <div className="flex flex-col gap-1.5">
             <FieldLabel>Plan Image</FieldLabel>
             <ImageUploadInput
@@ -569,7 +574,7 @@ function PlanRow({ plan, idx, total, onChange, onRemove }) {
                 >
                   {plan.Launch === true && <span className="w-2 h-2 rounded-full bg-white block" />}
                 </span>
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300 select-none">Time</span>
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300 select-none">Published</span>
               </label>
 
               <label className="flex items-center gap-2 cursor-pointer">
@@ -583,14 +588,14 @@ function PlanRow({ plan, idx, total, onChange, onRemove }) {
                 >
                   {plan.Launch === false && <span className="w-2 h-2 rounded-full bg-white block" />}
                 </span>
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300 select-none">NO-Time</span>
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300 select-none">Hidden</span>
               </label>
 
               <span className={`ml-auto px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${
                 plan.Launch ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
                             : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
               }`}>
-                {plan.Launch ? "Active Time" : "No Time Limit"}
+                {plan.Launch ? "Available for purchase" : "Hidden from app"}
               </span>
             </div>
           </div>

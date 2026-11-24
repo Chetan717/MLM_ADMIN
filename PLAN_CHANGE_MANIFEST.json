@@ -1,0 +1,72 @@
+{
+  "release": "MLMLIVE plan integration 24 Nov 2026",
+  "scope": "Plan/payment integration only; service plans and native checkout bridge",
+  "original_files_unchanged": 181,
+  "modified": [
+    {
+      "path": "RAZORPAY_SETUP_HINDI.md",
+      "before_sha256": "bc0f1a9816889619ec87d25d0c7fd85ebff6c433a7e7bb102b6ef6f7fe1c3e7b",
+      "after_sha256": "898226a7ba832231e34e643e4a7e50f91a5e968f428705ca21732da3239146e3"
+    },
+    {
+      "path": "firestore.payment.rules",
+      "before_sha256": "bbcccd35a94f58820a73824e5c02bda6f993588da2fa6f2e1d9fb4926615cf08",
+      "after_sha256": "8d87a3650254c266af1cd603d2c3e0877139e2fe125b87228a4d6995bba2ecbc"
+    },
+    {
+      "path": "functions/.env.mlmbooster-a4887",
+      "before_sha256": "5e055fdac08dd25bb99892146fce05cb6aea980cf1cba8e76240380a8f34976b",
+      "after_sha256": "8183d8ec6e398ec9b209e52a4591fcbaf21915065d7c71caeb289e68123ce582"
+    },
+    {
+      "path": "functions/paymentDomain.js",
+      "before_sha256": "6bc3efb10e35445954c05b56b12554cb0229c73cb8acdc1ec506e4e547dab21e",
+      "after_sha256": "828c37dc46bde955705e603c6d1001b2073f77663b7c563813aadc7cdda1d98b"
+    },
+    {
+      "path": "functions/paymentFunctions.js",
+      "before_sha256": "8c79c863f59372703afc904d60191a857e268a906d1730c53ec7e46229162765",
+      "after_sha256": "95fa3c23c7de4542389e54b2330acd6dc48985cf8ab17d0190736d9224486780"
+    },
+    {
+      "path": "functions/paymentService.js",
+      "before_sha256": "3a74e3b204c3349f28f6cfdf3bc2cdb0bc6599ec14307170e1f016c65724b075",
+      "after_sha256": "85fb8b891e7abd41eeb9d9fdc3affece3ebe247dc917d39e063d3b64f98cfecb"
+    },
+    {
+      "path": "src/Pages/Payments/Payments.jsx",
+      "before_sha256": "a8b70b287135b81f705559f36568afeff73753f05fda9ccca2077e3b8ed34135",
+      "after_sha256": "cbc0d64bc5878335a0b77b291f7e7ae6982008f5d7c0f541ad31d7db2c1ba427"
+    },
+    {
+      "path": "src/Pages/companies/Forms/AddCompanies.jsx",
+      "before_sha256": "6b83246c32493d03096efbcfed2a8aaf058aa9c6156aad2cc1be236062b49a8c",
+      "after_sha256": "65c62542768802fe9da73656437609b241a13a19c8af98491fe4c1cff326c0b1"
+    },
+    {
+      "path": "src/Pages/companies/Forms/EditCompanies.jsx",
+      "before_sha256": "9a51e2c379cb5810c53769821f49dd7b5ed7f11b000a83237972a2189601b124",
+      "after_sha256": "4859b51d8762da5817999893fb4353e2ef369a4f332379d7f1fc58bcf6d1a52d"
+    },
+    {
+      "path": "tests/payment.integration.mjs",
+      "before_sha256": "61d43a69c44929349c91a4c0dd759bf56063d349dd828e88779276fadf88f72e",
+      "after_sha256": "1bb50a483276c4871b41b56a8f24db199ed30f42551cd768e70228f232ee3864"
+    },
+    {
+      "path": "tests/paymentDomain.test.mjs",
+      "before_sha256": "34e9d43f764e6f2802d98314eafe2e66e4a765ba040325699f3112188b39d7ef",
+      "after_sha256": "69fd8970b453e45357c4897daf2e2b0e1cf3d4d0723f363fcbd589d05ded3afc"
+    }
+  ],
+  "added": [
+    {
+      "path": "PLAN_INTEGRATION_SETUP_HINDI.md",
+      "sha256": "3fea4ab5fd6e980ae9348a9dd31bb458936d59027896abc6a97bdda2a43f761e"
+    },
+    {
+      "path": "src/Pages/companies/Forms/PlanServiceFields.jsx",
+      "sha256": "343b2d3eb0a4d80c4573609ad36f67677a752b78f3f9a0a10378d1346e1d50bc"
+    }
+  ]
+}

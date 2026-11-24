@@ -93,6 +93,9 @@ function normalizePlan(raw, companyId) {
     "download allowance",
   );
   const Type = text(raw.Type || "Basic", 60);
+  const serviceType = raw.serviceType ?? "poster";
+  if (!["poster", "video", "combo"].includes(serviceType))
+    fail("failed-precondition", "Choose Poster, Video Editing or Combo service.");
   const normalized = {
     PlanName,
     PlanAmount: PlanAmount / 100,
@@ -105,6 +108,7 @@ function normalizePlan(raw, companyId) {
     Launch: raw.Launch === true,
     Description: text(raw.Description || "", 2000),
     image_url: text(raw.image_url || "", 2048),
+    serviceType,
   };
   if (normalized.image_url && !/^https:\/\//i.test(normalized.image_url))
     fail("failed-precondition", "Plan image must use HTTPS.");
@@ -226,29 +230,33 @@ function nextEntitlement(previous, purchase, now) {
   const grants = (previous?.grants || []).filter(
     (grant) => grant.expiresAtMs > now - 30 * DAY_MS,
   );
-  if (grants.length >= 128)
+  const services = planServices(purchase.plan);
+  if (grants.length + services.length > 128)
     fail(
       "resource-exhausted",
       "Subscription renewal limit reached. Contact support.",
     );
-  const startsAtMs = Math.max(
-    now,
-    ...grants.filter((g) => !g.revoked).map((g) => g.expiresAtMs),
-  );
-  const expiresAtMs = startsAtMs + purchase.plan.Day_value * DAY_MS;
-  if (!Number.isSafeInteger(expiresAtMs) || expiresAtMs > 253402300799000)
-    fail(
-      "failed-precondition",
-      "Subscription expiry is outside the supported date range.",
-    );
-  grants.push({
-    purchaseId: purchase.id,
-    startsAtMs,
-    expiresAtMs,
-    remainingDownloads: purchase.plan.downloads,
-    unlimitedDownloads: purchase.plan.unlimitedDownloads,
-    revoked: false,
-  });
+  for (const serviceType of services) {
+    const startsAtMs = Math.max(now, ...grants
+      .filter((g) => !g.revoked && (g.serviceType || "poster") === serviceType)
+      .map((g) => g.expiresAtMs));
+    const expiresAtMs = startsAtMs + purchase.plan.Day_value * DAY_MS;
+    if (!Number.isSafeInteger(expiresAtMs) || expiresAtMs > 253402300799000)
+      fail("failed-precondition", "Subscription expiry is outside the supported date range.");
+    grants.push({
+      purchaseId: purchase.id,
+      serviceType,
+      planName: purchase.plan.PlanName,
+      planType: purchase.plan.Type,
+      duration: purchase.plan.Day_value,
+      paidPaise: purchase.price?.totalPaise || 0,
+      startsAtMs,
+      expiresAtMs,
+      remainingDownloads: serviceType === "poster" ? purchase.plan.downloads : 0,
+      unlimitedDownloads: serviceType === "poster" && purchase.plan.unlimitedDownloads === true,
+      revoked: false,
+    });
+  }
   return entitlementSummary(
     {
       uid: purchase.uid,
@@ -261,21 +269,32 @@ function nextEntitlement(previous, purchase, now) {
     now,
   );
 }
+function planServices(plan) {
+  const kind = plan.serviceType || "poster";
+  if (!["poster", "video", "combo"].includes(kind))
+    fail("failed-precondition", "Invalid service type.");
+  return kind === "combo" ? ["poster", "video"] : [kind];
+}
 function entitlementSummary(value, now) {
-  const usable = (value?.grants || []).filter(
-    (g) => !g.revoked && g.expiresAtMs > now,
-  );
-  const current = usable.find((g) => g.startsAtMs <= now);
+  const services = Object.fromEntries(["poster", "video"].map((serviceType) => {
+    const usable = (value?.grants || []).filter((g) =>
+      !g.revoked && g.expiresAtMs > now && (g.serviceType || "poster") === serviceType)
+      .sort((a, b) => a.startsAtMs - b.startsAtMs);
+    const current = usable.find((g) => g.startsAtMs <= now);
+    return [serviceType, {
+      status: current ? "active" : usable.length ? "scheduled" : "expired",
+      startsAtMs: current?.startsAtMs || usable[0]?.startsAtMs || 0,
+      expiresAtMs: usable.length ? Math.max(...usable.map((g) => g.expiresAtMs)) : 0,
+      remainingDownloads: current?.remainingDownloads || 0,
+      unlimitedDownloads: current?.unlimitedDownloads === true,
+      currentPurchaseId: current?.purchaseId || "",
+    }];
+  }));
   return {
     ...value,
-    status: current ? "active" : usable.length ? "scheduled" : "expired",
-    startsAtMs: current?.startsAtMs || usable[0]?.startsAtMs || 0,
-    expiresAtMs: usable.length
-      ? Math.max(...usable.map((g) => g.expiresAtMs))
-      : 0,
-    remainingDownloads: current?.remainingDownloads || 0,
-    unlimitedDownloads: current?.unlimitedDownloads === true,
-    currentPurchaseId: current?.purchaseId || "",
+    // Preserve poster-only fields for existing app features.
+    ...services.poster,
+    services,
   };
 }
 module.exports = {
@@ -298,5 +317,6 @@ module.exports = {
   validateProviderPayment,
   nextEntitlement,
   entitlementSummary,
+  planServices,
   DAY_MS,
 };

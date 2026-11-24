@@ -93,7 +93,7 @@ test('timeout after provider accepts order does not retry POST; signed webhook r
   const original = gateway.createOrder;
   gateway.createOrder = async purchase => { await original(purchase); throw new D.PaymentError('unavailable', 'timeout'); };
   const result = await create(await quote()); assert.equal(result.status, 'creation_unknown'); assert.equal(result.orderId, '');
-  await assert.rejects(create(await quote()), { code: 'unavailable' }); assert.equal(posts, 1);
+  const resumed = await create(await quote()); assert.equal(resumed.purchaseId, result.purchaseId); assert.equal(resumed.status, 'creation_unknown'); assert.equal(posts, 1);
   const originalOrder = [...orders.values()][0]; const checkout = { ...result, orderId: originalOrder.id }; const payment = capture(checkout);
   await service.webhook({ event: 'payment.captured', payload: { payment: { entity: payment } } }, 'evt_recovered');
   assert.equal((await db.doc(`paymentPurchases/${result.purchaseId}`).get()).data().status, 'paid');
@@ -252,4 +252,54 @@ test('rules expose only the authenticated user subscription and query', async ()
   await assertFails(getDoc(doc(userDb, 'subscription/other')));
   await assertFails(getDocs(collection(userDb, 'subscription')));
   await assertFails(getDocs(query(collection(userDb, 'subscription'), limit(20))));
+});
+
+test('video purchase stores service validity and never grants live poster subscription', async () => {
+  config.mode = 'live'; config.keyId = 'rzp_live_example'; gateway.keyId = config.keyId;
+  await db.doc('mlmcomp/company_a').update({ Plans: [{ ...plan, serviceType: 'video' }] });
+  const order = await create(await quote());
+  const result = await verify(order, capture(order));
+  assert.equal(result.status, 'paid');
+  assert.equal(result.serviceGrants.length, 1);
+  assert.equal(result.serviceGrants[0].serviceType, 'video');
+  assert.equal((await db.collection('subscription').get()).size, 0);
+  assert.equal((await db.collection('paymentVideoSubscriptions').get()).size, 1);
+  const ent = await service.entitlement(req({ companyId: 'company_a' }));
+  assert.equal(ent.entitlement.services.video.status, 'active');
+  assert.equal(ent.entitlement.services.poster.status, 'expired');
+  await assertFails(setDoc(doc(owner(), 'paymentVideoSubscriptions/injected'), { Active: true }));
+});
+
+test('captured combo grants both services once; partial refund removes both grants', async () => {
+  await db.doc('mlmcomp/company_a').update({ Plans: [{ ...plan, serviceType: 'combo' }] });
+  const order = await create(await quote());
+  const payment = capture(order);
+  await Promise.all([verify(order, payment), verify(order, payment)]);
+  let ent = (await service.entitlement(req({ companyId: 'company_a' }))).entitlement;
+  assert.equal(ent.grants.length, 2);
+  assert.equal(ent.services.poster.status, 'active'); assert.equal(ent.services.video.status, 'active');
+  payment.amount_refunded = 100;
+  payments.set(payment.id, payment);
+  const result = await verify(order, payment);
+  assert.equal(result.status, 'partially_refunded');
+  ent = (await service.entitlement(req({ companyId: 'company_a' }))).entitlement;
+  assert.equal(ent.services.poster.status, 'expired'); assert.equal(ent.services.video.status, 'expired');
+});
+
+test('authorized bank payment stays pending after checkout timeout and preserves the same order', async () => {
+  const order = await create(await quote()); capture(order, 'authorized');
+  time += 31 * 60000;
+  const pending = await service.status(req({ purchaseId: order.purchaseId }));
+  assert.equal(pending.status, 'pending'); assert(pending.expiresAtMs > time);
+  const resumed = await create(await quote());
+  assert.equal(resumed.orderId, order.orderId); assert.equal(posts, 1);
+  assert.equal((await db.collection('paymentTestSubscriptions').get()).size, 0);
+});
+
+test('an abandoned checkout is marked expired only after the provider confirms no bank payment is pending', async () => {
+  const order = await create(await quote()); time += 31 * 60000;
+  const result = await service.status(req({ purchaseId: order.purchaseId }));
+  assert.equal(result.status, 'expired');
+  assert.equal((await db.doc(`paymentPurchases/${order.purchaseId}`).get()).data().status, 'expired');
+  assert.equal((await db.collection('paymentTestSubscriptions').get()).size, 0);
 });

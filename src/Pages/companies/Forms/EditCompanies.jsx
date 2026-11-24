@@ -1,3 +1,5 @@
+import PlanServiceFields from "./PlanServiceFields";
+import { createPlanId } from "../../../Utils/createPlanId.js";
 import SearchableSelect from "../../../components/SearchableSelect.jsx";
 import { notifyAdminTabUpdates } from "../../../Utils/adminTabUpdates.js";
 import useUnsavedFormGuard from "../../../Utils/useUnsavedFormGuard";
@@ -46,13 +48,13 @@ const emptyImgEntry  = () => ({ id: uid(), url: "" });
 const emptyTraining  = () => ({ id: uid(), trainingname: "", images: [emptyImgEntry()] });
 const emptyMeeting   = () => ({ id: uid(), meetingname:  "", images: [emptyImgEntry()] });
 const emptyPlan      = () => ({
-  _key: uid(), planId: crypto.randomUUID(), PlanName: "", PlanAmount: "", Duration: "", Day_value: "",
+  _key: uid(), planId: createPlanId(), serviceType: "poster", unlimitedDownloads: false, PlanName: "", PlanAmount: "", Duration: "", Day_value: "",
   Type: "", downloads: "", image_url: "", Launch: true, Description: "",
 });
 
 const normalisePlans = (arr) =>
   (arr || []).map((p) => ({
-    _key: uid(), planId: p.planId || "", unlimitedDownloads: p.unlimitedDownloads === true, PlanName: p.PlanName || "", PlanAmount: p.PlanAmount ?? "",
+    _key: uid(), planId: p.planId || "", serviceType: p.serviceType || "poster", unlimitedDownloads: p.unlimitedDownloads === true, PlanName: p.PlanName || "", PlanAmount: p.PlanAmount ?? "",
     Duration: p.Duration || "", Day_value: p.Day_value ?? "", Type: p.Type || "",
     downloads: p.downloads ?? "", image_url: p.image_url || "",
     Launch: p.Launch ?? true, Description: p.Description || "",
@@ -447,7 +449,7 @@ function PlanRow({ plan, idx, total, onChange, onRemove }) {
         </span>
         {plan.Type && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400 border border-violet-100 dark:border-violet-500/20 flex-shrink-0">{plan.Type}</span>}
         {plan.Duration && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-400 border border-sky-100 dark:border-sky-500/20 flex-shrink-0">{plan.Duration}</span>}
-        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold flex-shrink-0 ${plan.Launch ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400" : "bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500"}`}>{plan.Launch ? "Time" : "No-Time"}</span>
+        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold flex-shrink-0 ${plan.Launch ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400" : "bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500"}`}>{plan.Launch ? "Published" : "Hidden"}</span>
         {total > 1 && (
           <button type="button" onClick={(e) => { e.stopPropagation(); onRemove(plan._key); }} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors flex-shrink-0">
             <TrashBin className="w-3.5 h-3.5" />
@@ -485,6 +487,7 @@ function PlanRow({ plan, idx, total, onChange, onRemove }) {
             </div>
           </div>
           <div className="flex flex-col gap-1.5"><FieldLabel>Downloads</FieldLabel><input type="number" value={plan.downloads} onChange={(e) => update("downloads", e.target.value)} placeholder="e.g. 100" className={inputCls} /></div>
+          <PlanServiceFields plan={plan} update={update} inputCls={inputCls} />
           <div className="flex flex-col gap-1.5"><FieldLabel>Plan Image</FieldLabel><ImageUploadInput value={plan.image_url} onChange={(url) => update("image_url", url)} storagePath="companies/plans" placeholder="Paste URL or click ↑ to upload" /></div>
           <div className="flex flex-col gap-1.5">
             <FieldLabel>Launch</FieldLabel>
@@ -493,15 +496,15 @@ function PlanRow({ plan, idx, total, onChange, onRemove }) {
                 <span onClick={() => update("Launch", true)} className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer ${plan.Launch === true ? "border-violet-600 bg-violet-600" : "border-gray-300 dark:border-gray-600 hover:border-violet-400"}`}>
                   {plan.Launch === true && <span className="w-2 h-2 rounded-full bg-white block" />}
                 </span>
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300 select-none">Time</span>
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300 select-none">Published</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <span onClick={() => update("Launch", false)} className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer ${plan.Launch === false ? "border-red-500 bg-red-500" : "border-gray-300 dark:border-gray-600 hover:border-red-400"}`}>
                   {plan.Launch === false && <span className="w-2 h-2 rounded-full bg-white block" />}
                 </span>
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300 select-none">NO-Time</span>
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300 select-none">Hidden</span>
               </label>
-              <span className={`ml-auto px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${plan.Launch ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400" : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"}`}>{plan.Launch ? "Active Time" : "No Time Limit"}</span>
+              <span className={`ml-auto px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${plan.Launch ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400" : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"}`}>{plan.Launch ? "Available for purchase" : "Hidden from app"}</span>
             </div>
           </div>
           <div className="flex flex-col gap-1.5"><FieldLabel>Description</FieldLabel><textarea rows={3} value={plan.Description} onChange={(e) => update("Description", e.target.value)} placeholder="Describe what this plan includes…" className={`${inputCls} resize-none`} /></div>

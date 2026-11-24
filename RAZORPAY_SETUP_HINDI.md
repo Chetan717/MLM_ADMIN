@@ -69,8 +69,8 @@ ya Authentication ke liye App Check **Enforce** kiya tha, un affected services k
 **Unenforced** karein, warna token na bhejne wale updated clients block honge.
 Firebase Authentication aur Firestore Security Rules enabled hi rakhein.
 
-Yeh uploaded source web/WebView app hai. Actual mobile WebView mein checkout
-aur UPI app-switch test karein; native Android/iOS source upload mein nahi tha.
+24 Nov plan integration mein separate expomlm package mein native Razorpay bridge bhi diya gaya hai.
+Updated native build aur setup ke liye PLAN_INTEGRATION_SETUP_HINDI.md padhein; device par UPI app-switch test karein.
 
 ## 4. Razorpay secrets aur backend flags
 

@@ -27,7 +27,8 @@ function createPaymentService({
   const entitlementRef = (uid, companyId, mode = getConfig().mode) =>
     ref(ENTITLEMENTS, D.hash(`${mode}:${uid}:${companyId}`));
   const subscriptions = (purchase) =>
-    purchase.mode === "test" ? "paymentTestSubscriptions" : "subscription";
+    purchase.mode === "test" ? "paymentTestSubscriptions"
+      : purchase.plan.serviceType === "video" ? "paymentVideoSubscriptions" : "subscription";
   const snapshotData = (snapshot) =>
     snapshot?.exists ? snapshot.data() : null;
   function actor(request) {
@@ -308,6 +309,9 @@ function createPaymentService({
       expiresAtMs: purchase.expiresAtMs,
       receipt: purchase.id,
       subscriptionId: purchase.subscriptionId || "",
+      serviceGrants: purchase.serviceGrants || [],
+      startsAtMs: purchase.startsAtMs || 0,
+      subscriptionExpiresAtMs: purchase.subscriptionExpiresAtMs || 0,
     };
   }
   async function create(request) {
@@ -332,84 +336,96 @@ function createPaymentService({
       "_paymentCheckoutLocks",
       D.hash(`${getConfig().mode}:${owner.uid}:${request.data.companyId}`),
     );
-    const selected = await db.runTransaction(async (tx) => {
-      const [existing, lock] = await Promise.all([
-        tx.get(purchaseRef),
-        tx.get(lockRef),
-      ]);
-      const same = snapshotData(existing);
-      if (same) {
+    let selected;
+    try {
+      selected = await db.runTransaction(async (tx) => {
+        const [existing, lock] = await Promise.all([
+          tx.get(purchaseRef),
+          tx.get(lockRef),
+        ]);
+        const same = snapshotData(existing);
+        if (same) {
+          if (
+            same.uid !== owner.uid ||
+            same.quoteId !== request.data.quoteId ||
+            same.companyId !== request.data.companyId
+          )
+            D.fail(
+              "permission-denied",
+              "Request ID was already used for a different purchase.",
+            );
+          return { purchase: same, isNew: false };
+        }
+        const previousId = lock.data()?.purchaseId;
+        const previous = previousId
+          ? snapshotData(await tx.get(ref(PURCHASES, previousId)))
+          : null;
         if (
-          same.uid !== owner.uid ||
-          same.quoteId !== request.data.quoteId ||
-          same.companyId !== request.data.companyId
-        )
+          previous &&
+          ![
+            "paid",
+            "refunded",
+            "partially_refunded",
+            "disputed",
+            "failed",
+          ].includes(previous.status) &&
+          (previous.expiresAtMs > time ||
+            ["creating", "creation_unknown"].includes(previous.status))
+        ) {
+          if (previous.quoteId === request.data.quoteId)
+            return { purchase: previous, isNew: false };
           D.fail(
-            "permission-denied",
-            "Request ID was already used for a different purchase.",
+            "failed-precondition",
+            "A checkout is already pending. Check that payment before starting another.",
           );
-        return { purchase: same, isNew: false };
-      }
-      const previousId = lock.data()?.purchaseId;
-      const previous = previousId
-        ? snapshotData(await tx.get(ref(PURCHASES, previousId)))
-        : null;
-      if (
-        previous &&
-        ![
-          "paid",
-          "refunded",
-          "partially_refunded",
-          "disputed",
-          "failed",
-        ].includes(previous.status) &&
-        (previous.expiresAtMs > time ||
-          ["creating", "creation_unknown"].includes(previous.status))
-      ) {
-        if (previous.quoteId === request.data.quoteId)
-          return { purchase: previous, isNew: false };
-        D.fail(
-          "failed-precondition",
-          "A checkout is already pending. Check that payment before starting another.",
-        );
-      }
-      const ctx = await priceContext(owner, request.data, tx); // Fresh reads and version checks inside the reservation transaction.
-      if (ctx.quoteId !== request.data.quoteId)
-        D.fail(
-          "failed-precondition",
-          "Plan or discount changed. Review the updated total before paying.",
-        );
-      const purchase = {
-        id: purchaseId,
-        uid: owner.uid,
-        mobileNo: owner.mobileNo,
-        userName: String(ctx.user.name || "").slice(0, 100),
-        companyId: ctx.companyId,
-        companyName: ctx.company.name,
-        plan: ctx.plan,
-        price: ctx.price,
-        commissions: ctx.commissions,
-        couponCode: ctx.couponCode,
-        couponId: ctx.couponId,
-        quoteId: ctx.quoteId,
-        keyId: client.keyId,
-        mode: getConfig().mode,
-        status: "creating",
-        orderId: "",
-        paymentId: "",
-        createdAtMs: time,
-        updatedAtMs: time,
-        expiresAtMs: time + ORDER_LIFE_MS,
-        nextReconcileAtMs: time + 15 * 60000,
-        refundedPaise: 0,
-        failureCount: 0,
-        reconcileCount: 0,
-      };
-      tx.create(purchaseRef, purchase);
-      tx.set(lockRef, { purchaseId, uid: owner.uid, createdAtMs: time });
-      return { purchase, isNew: true };
-    });
+        }
+        const ctx = await priceContext(owner, request.data, tx); // Fresh reads and version checks inside the reservation transaction.
+        if (ctx.quoteId !== request.data.quoteId)
+          D.fail(
+            "failed-precondition",
+            "Plan or discount changed. Review the updated total before paying.",
+          );
+        const purchase = {
+          id: purchaseId,
+          uid: owner.uid,
+          mobileNo: owner.mobileNo,
+          userName: String(ctx.user.name || "").slice(0, 100),
+          companyId: ctx.companyId,
+          companyName: ctx.company.name,
+          plan: ctx.plan,
+          price: ctx.price,
+          commissions: ctx.commissions,
+          couponCode: ctx.couponCode,
+          couponId: ctx.couponId,
+          quoteId: ctx.quoteId,
+          keyId: client.keyId,
+          mode: getConfig().mode,
+          status: "creating",
+          orderId: "",
+          paymentId: "",
+          createdAtMs: time,
+          updatedAtMs: time,
+          expiresAtMs: time + ORDER_LIFE_MS,
+          nextReconcileAtMs: time + 15 * 60000,
+          refundedPaise: 0,
+          failureCount: 0,
+          reconcileCount: 0,
+        };
+        tx.create(purchaseRef, purchase);
+        tx.set(lockRef, { purchaseId, uid: owner.uid, createdAtMs: time });
+        return { purchase, isNew: true };
+      });
+    } catch (error) {
+      // Validation failed before reservation or provider POST.
+      if (error instanceof D.PaymentError && ["failed-precondition", "invalid-argument", "permission-denied"].includes(error.code))
+        error.details = { checkoutNotCreated: true };
+      throw error;
+    }
     if (!selected.isNew) {
+      // A response may be lost after reserving or creating the provider order.
+      // Return its identity so the client can reconcile the same purchase.
+      if (!selected.purchase.orderId && selected.purchase.keyId === client.keyId)
+        return checkout(selected.purchase);
       if (
         selected.purchase.keyId !== client.keyId ||
         (selected.purchase.expiresAtMs <= time &&
@@ -418,11 +434,6 @@ function createPaymentService({
         D.fail(
           "failed-precondition",
           "Checkout is no longer available. Check payment history.",
-        );
-      if (!selected.purchase.orderId)
-        D.fail(
-          "unavailable",
-          "Order confirmation is pending. Do not pay again; use Check payment.",
         );
       return checkout(selected.purchase);
     }
@@ -570,7 +581,8 @@ function createPaymentService({
       const grant = entitlement.grants.find(
         (g) => g.purchaseId === purchase.id,
       );
-      if (refundedPaise > 0) grant.revoked = true;
+      const serviceGrants = entitlement.grants.filter((g) => g.purchaseId === purchase.id);
+      if (refundedPaise > 0) serviceGrants.forEach((g) => { g.revoked = true; });
       const summary = D.entitlementSummary(entitlement, time);
       const status =
         refundedPaise === purchase.price.totalPaise
@@ -591,6 +603,8 @@ function createPaymentService({
         duration: purchase.plan.Day_value,
         download: purchase.plan.downloads,
         unlimitedDownloads: purchase.plan.unlimitedDownloads,
+        serviceType: purchase.plan.serviceType || "poster",
+        serviceGrants,
         startdate: new Date(grant.startsAtMs).toISOString(),
         expirydate: new Date(grant.expiresAtMs).toISOString(),
         Active: !refundedPaise,
@@ -631,6 +645,7 @@ function createPaymentService({
         refundedPaise,
         startsAtMs: grant.startsAtMs,
         subscriptionExpiresAtMs: grant.expiresAtMs,
+        serviceGrants,
         nextReconcileAtMs: time + D.DAY_MS,
       });
       const marketingPaise = purchase.commissions.reduce(
@@ -697,6 +712,9 @@ function createPaymentService({
       );
       auditRow(tx, purchase, "payment_captured", {
         paymentId: payment.id,
+        startsAtMs: grant.startsAtMs,
+        subscriptionExpiresAtMs: grant.expiresAtMs,
+        serviceGrants,
         totalPaise: purchase.price.totalPaise,
         refundedPaise,
       });
@@ -705,6 +723,9 @@ function createPaymentService({
         status,
         subscriptionId,
         paymentId: payment.id,
+        startsAtMs: grant.startsAtMs,
+        subscriptionExpiresAtMs: grant.expiresAtMs,
+        serviceGrants,
       });
     });
   }
@@ -791,10 +812,25 @@ function createPaymentService({
       }
       return result;
     }
-    return {
-      ...checkout(purchase),
-      status: purchase.expiresAtMs < now() ? "expired" : "pending",
-    };
+    const waiting = order.status === "paid" || order.amount_paid > 0 ||
+      (list.items || []).some((p) => ["authorized", "created"].includes(p.status));
+    const expired = purchase.expiresAtMs < now() && !waiting;
+    if (expired || (waiting && purchase.expiresAtMs < now())) {
+      return db.runTransaction(async (tx) => {
+        const purchaseRef = ref(PURCHASES, purchase.id);
+        const current = snapshotData(await tx.get(purchaseRef));
+        // A captured-payment webhook may have settled while provider reads ran.
+        if (current.paymentId) return checkout(current);
+        const update = {
+          status: expired ? "expired" : "pending",
+          updatedAtMs: now(),
+          ...(!expired ? { expiresAtMs: now() + ORDER_LIFE_MS } : {}),
+        };
+        tx.update(purchaseRef, update);
+        return checkout({ ...current, ...update });
+      });
+    }
+    return { ...checkout(purchase), status: "pending" };
   }
   async function status(request) {
     D.input(request.data, ["purchaseId"]);
@@ -838,6 +874,7 @@ function createPaymentService({
     ]);
     const items = rows.docs.slice(0, 20).map((s) => s.data());
     return {
+      mode: getConfig().mode,
       items: items.map((p) => ({
         ...checkout(p),
         createdAtMs: p.createdAtMs,

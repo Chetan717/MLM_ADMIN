@@ -53,3 +53,37 @@ test('strict input rejects financial injection and path traversal', () => {
   assert.throws(() => D.id('../c1'));
   assert.throws(() => D.couponCode('ABC 12'));
 });
+
+test('legacy plans default to poster and unsupported service values fail closed', () => {
+  assert.equal(D.normalizePlan(plan, 'c1').serviceType, 'poster');
+  assert.throws(() => D.normalizePlan({ ...plan, serviceType: 'all_services' }, 'c1'));
+});
+test('video starts immediately without consuming or extending poster validity', () => {
+  const time = 1800000000000;
+  const purchase = { id: 'p_poster', uid: 'u', mobileNo: '9999999999', companyId: 'c1', plan: { ...plan, unlimitedDownloads: true } };
+  const poster = D.nextEntitlement(null, purchase, time);
+  const video = D.nextEntitlement(poster, { ...purchase, id: 'p_video', plan: { ...purchase.plan, serviceType: 'video' } }, time + 1000);
+  assert.equal(video.grants[1].startsAtMs, time + 1000);
+  assert.equal(video.grants[1].remainingDownloads, 0);
+  assert.equal(video.grants[1].unlimitedDownloads, false);
+  assert.equal(video.services.poster.expiresAtMs, poster.expiresAtMs);
+  assert.equal(video.services.video.status, 'active');
+  const onlyVideo = D.nextEntitlement(null, { ...purchase, plan: { ...plan, serviceType: 'video' } }, time);
+  assert.equal(onlyVideo.status, 'expired'); // Legacy poster authority stays empty.
+  assert.equal(onlyVideo.services.video.status, 'active');
+});
+test('combo queues each service independently and refund revokes both service grants', () => {
+  const time = 1800000000000;
+  const purchase = { id: 'p_poster', uid: 'u', mobileNo: '9999999999', companyId: 'c1', plan };
+  const first = D.nextEntitlement(null, purchase, time);
+  // Existing persisted grants without a serviceType remain poster-only.
+  delete first.grants[0].serviceType;
+  const combo = D.nextEntitlement(first, { ...purchase, id: 'p_combo', plan: { ...plan, serviceType: 'combo' } }, time + 1000);
+  const grants = combo.grants.filter(g => g.purchaseId === 'p_combo');
+  assert.equal(grants.length, 2);
+  assert.equal(grants[0].startsAtMs, time + 30 * D.DAY_MS);
+  assert.equal(grants[1].startsAtMs, time + 1000);
+  const revoked = D.entitlementSummary({ ...combo, grants: combo.grants.map(g => g.purchaseId === 'p_combo' ? { ...g, revoked: true } : g) }, time + 2000);
+  assert.equal(revoked.services.poster.status, 'active');
+  assert.equal(revoked.services.video.status, 'expired');
+});

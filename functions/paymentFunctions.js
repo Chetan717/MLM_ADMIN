@@ -84,7 +84,7 @@ module.exports = function paymentFunctions({
         });
         if (error instanceof HttpsError) throw error;
         if (error instanceof D.PaymentError)
-          throw new HttpsError(error.code, error.message);
+          throw new HttpsError(error.code, error.message, error.details);
         throw new HttpsError(
           "internal",
           "Payment could not be completed. Check payment status before trying again.",
