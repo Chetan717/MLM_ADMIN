@@ -10,7 +10,7 @@ import ImageUploadInput from "../../Utils/Imageuploadinput";
 const readPlans = httpsCallable(functions, "panelAppPlans");
 const savePlans = httpsCallable(functions, "panelSaveAppPlans");
 const input = "w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2.5 text-sm";
-const emptyPlan = () => ({ planId: createPlanId(), PlanName: "", PlanAmount: "", Day_value: 30, Duration: "30 Days", Type: "Pro", downloads: 0, unlimitedDownloads: false, serviceType: "poster", Launch: false, Description: "", image_url: "" });
+const emptyPlan = () => ({ planId: createPlanId(), PlanName: "", PlanAmount: "", Day_value: 30, Duration: "30 Days", Type: "Pro", downloads: 0, videoCredits: "", unlimitedDownloads: false, serviceType: "poster", Launch: false, Description: "", image_url: "" });
 
 export default function AppPlans() {
   const { session } = useAdminAuth();
@@ -66,6 +66,7 @@ export default function AppPlans() {
           <label className="text-sm font-medium space-y-1 block">Service<select className={input} value={p.serviceType || "poster"} onChange={(e) => edit(p.planId, "serviceType", e.target.value)}><option value="poster">Poster Design</option><option value="video">Video Editing Service</option><option value="combo">Poster + Video Editing Combo</option></select></label>
           <label className="text-sm font-medium space-y-1 block">Plan type<select className={input} value={p.Type || "Pro"} onChange={(e) => edit(p.planId, "Type", e.target.value)}>{["Basic", "Pro", "Standard", "Annual Plan", "Unlimited"].map((value) => <option key={value}>{value}</option>)}</select></label>
           {p.serviceType !== "video" && <label className="text-sm font-medium space-y-1 block">Poster downloads<input type="number" min="0" max="100000000" step="1" disabled={p.unlimitedDownloads || p.Type === "Unlimited"} className={input} value={p.downloads} onChange={(e) => edit(p.planId, "downloads", e.target.value)} /></label>}
+          {p.serviceType !== "poster" && <label className="text-sm font-medium space-y-1 block">Video editing credits (optional)<input type="number" min="1" max="100000000" step="1" className={input} value={p.videoCredits ?? ""} onChange={(e) => edit(p.planId, "videoCredits", e.target.value)} /><span className="block text-xs text-gray-500">Leave empty for validity-based video access. Set a number for credit-based video service.</span></label>}
         </div>
         <div className="flex flex-wrap gap-5 text-sm">
           <label className="flex items-center gap-2"><input type="checkbox" checked={p.Launch} onChange={(e) => edit(p.planId, "Launch", e.target.checked)} />Published</label>

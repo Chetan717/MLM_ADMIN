@@ -1,48 +1,34 @@
-# Payment validation — Global App Plans, 24 November 2026
-
-The final source was checked locally. Provider API responses were simulated;
-there was no production deployment, real payment or physical-device test.
+# Validation — Plans UI / eligibility / invoice, 25 November 2026
 
 | Check | Result |
 | --- | --- |
-| Corrected Admin production build | PASS |
-| Corrected Web production build / R2-only check | PASS |
-| Admin payment domain, HTTP, installer and UUID tests | 22/22 PASS |
-| Admin navigation retention tests | 4/4 PASS |
-| Firestore payment integration tests | 31/31 PASS |
-| Full merged production rules regression | 15/15 PASS |
-| Web payment client tests | 13/13 PASS |
-| Actual central App Plans DOM add/save/remove interactions | PASS |
-| Actual Web checkout DOM recovery/verification interactions | PASS |
+| Backend payment domain, HTTP, installer and UUID | 24/24 pass |
+| Firestore payment integration | 38/38 pass; Razorpay provider mocked |
+| Web client, eligibility and PDF/bridge units | 18/18 pass |
+| Actual React DOM scenario groups | 8 pass |
+| Admin production build | Pass |
+| Web production build + R2-only assertion | Pass |
 
-The central catalog tests use different/no company profiles and different old
-company prices. All receive the same global catalog and quote. A purchase and
-same-service renewal keep app-wide validity when the profile changes. Tests
-also exercise optimistic Admin catalog versions, permission/session checks,
-server-only direct catalog writes, company metadata saving without plan writes,
-trusted legacy allowance/date migration, legacy-refund revocation, unresolved
-old-order duplicate protection and strict test/live status isolation.
+Backend cases cover independent Poster/Video ownership, Combo conflicts, stale
+quotes, forged direct orders, concurrent different-plan requests, exact expiry,
+credit exhaustion, unlimited/time-only plans, legacy migration and invoice
+owner/mode checks. They retain signature/amount/currency/capture/refund/race and
+pending-bank recovery coverage. A zero-benefit published Poster plan and an
+unfulfillable full ledger are refused before creating a payable provider order.
 
-The existing integration cases also cover server price calculation, identity
-and signature tampering, exact provider amount/currency/order capture, concurrent
-order/callback/webhook handling, provider-create timeouts, duplicate failures,
-refunds, Video/Combo service grants and pending bank payments without false
-success. Web unit/DOM cases cover durable request reuse, account changes,
-mode isolation, old company draft recovery, secure IDs without randomUUID,
-unsupported old WebView handling, cancellation and verification failures.
+DOM cases exercise the actual bottom tab and subscription components. The mock
+gateway bank/continue controls receive clicks and retain focus with the app
+sheet unmounted. A failed-attempt event does not restore an overlay onto the
+still-open gateway. Cancellation/verification rejection never activate a plan;
+verified success downloads an invoice through the existing native PDF bridge;
+active ownership hides overlapping buy options; unsupported native shell and
+server-confirmed failure are handled without fake success/debit promises.
 
-Full merged rules checks retain Marketing assigned-user/coupon/dashboard reads
-and Portal Users edits; normal user profile/name/download writes; template CRUD,
-Task Management, reports, Expense and Popup behavior. Financial/identity/catalog
-forgeries, revoked sessions, cross-user subscriptions and unknown collections
-remain denied. Expected PERMISSION_DENIED logs are assertions in these tests.
+PDF units verify actual amount/reference content, one-page output with long
+fields and the Android/iOS bridge payloads. Physical native file permissions,
+real Razorpay UI, real payments/UPI switching and pixel-level browser QA remain
+deployment acceptance checks. The browser binary/download was unavailable.
 
-No complete App/Admin unrelated-feature regression suite or dependency audit
-was rerun for this correction. Prior baseline diagnostics are not reported as
-current results. DOM checks use the actual React components with mocked APIs;
-they do not verify final device layout, real Razorpay UI or UPI switching.
-
-After deployment, validate Firebase auth, index readiness, Eventarc retry,
-Razorpay automatic capture/webhooks, real device restart/UPI switching, a merchant
-purchase and refund. Both corrected frontends and payment endpoints must be
-released together because payment requests no longer accept companyId.
+No production deployment or real payment was performed. Unrelated full suites,
+full merged-rule tests and dependency audits were not rerun for this update.
+Rules/indexes and native source are unchanged. See PLANS_UI_UPDATE_HINDI.md.

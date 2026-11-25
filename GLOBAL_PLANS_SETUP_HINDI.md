@@ -1,68 +1,81 @@
-# MLM LIVE — Global App Plans correction (24 November 2026)
+# MLM LIVE Plans / Checkout / Invoice update — 25 November 2026
 
-## Plans कहाँ add होंगे
+## इस update में
 
-**Admin sidebar → App Plans → Add Plan → Save App Plans**
+- Bottom tab bar में Home, Plans, Ask AI और Profile हैं। Desktop sidebar में Plans है।
+- Plans, plan details sheet, My plan, purchase history, verified success और failed/pending screens को supplied images की blue/white/gold style में बनाया है। Images के example categories, amounts, savings, benefit promises या payment logic copy नहीं किए हैं।
+- Catalog central `appPlans/main` से ही आता है। Amount, duration, service और actual credit balance Admin/backend से आते हैं।
 
-Company के Add/Edit forms में plans नहीं हैं। पूरे MLM LIVE app के लिए एक central catalog है। किसी भी company का user वही published plans देखेगा। Subscription page खोलने या plan खरीदने के लिए company/profile चुनना जरूरी नहीं है; login जरूरी है। खरीदे हुए नए plans की service validity पूरे app के लिए है।
+## दोबारा खरीदने का नियम
 
-1. Plan name, amount और duration (days) भरें।
-2. Service चुनें: Poster Design, Video Editing Service या Poster + Video Editing Combo।
-3. Poster downloads या Unlimited चुनें, description/image चाहें तो जोड़ें।
-4. **Published** tick करके **Save App Plans** दबाएं। Unpublished plan users को नहीं दिखता।
+| ग्राहक की valid service | खरीदने के लिए दिखाई देंगे |
+| --- | --- |
+| कोई service नहीं | Poster, Video और Combo के published plans |
+| सिर्फ Poster | केवल Video plans |
+| सिर्फ Video | केवल Poster plans |
+| दोनों services / valid Combo | Buy list नहीं |
 
-Prices hardcode नहीं हैं। Checkout में existing 18% GST server जोड़ता है; discount/commission भी server calculate करता है। User का selected company price या validity नहीं बदलता। Save के बाद users का cached catalog अधिकतम 5 मिनट तक पुराना दिख सकता है; बदली हुई price पर पुराना quote checkout नहीं बना सकता। Reload/refresh से नया catalog लिया जा सकता है।
+Expiry या applicable credits zero होने पर उस service के plans वापस उपलब्ध होते हैं। Combo तभी मिलेगा जब दोनों services खरीदने के लिए available हों। Unlimited Poster plan credits zero होने से expire नहीं होता। पुराना validity-only Video plan अपनी expiry तक valid रहता है। पहले से paid scheduled grants भी ownership में गिने जाते हैं।
 
-Master Admin और मौजूदा Companies permission वाले Admin इस page को manage कर सकते हैं। App Plans की अलग tab permission इस release में नहीं बनाई गई है।
+यह रोक केवल UI filter नहीं है: quote और order reservation में server checks हैं। Stale quote, direct request और concurrent orders भी duplicate service checkout नहीं बना सकते। एक pending checkout का वही order recover होता है। पहले से बने genuine pending/captured payments का verification/refund path सुरक्षित रखा है।
 
-## कौन-से corrected files लगेंगे
+## Admin में credits
 
-- `MLM_ADMIN_Global_Plans_24Nov2026.zip`: corrected Admin UI, payment Functions, indexes, full merged `firestore.rules`, tests और setup।
-- `MLMLIVE_WEBAPP_Global_Plans_24Nov2026.zip`: corrected Web App checkout और app-wide recovery/history।
-- `firestore.rules`: आपके दिए हुए full production rules में payment और central-catalog protections merge हैं। वही file Admin archive के root में है।
+App Plans में Poster downloads / Unlimited पहले की तरह हैं। Video/Combo में optional **Video editing credits** field है। खाली रखने पर video access validity-based रहता है; number देने पर वह initial video credit allowance है। Published limited Poster/Combo plan में positive poster credits या Unlimited जरूरी है, ताकि zero-benefit paid order न बने।
 
-इन दोनों corrected archives को पुराने company-wise plan archives की जगह use करें। Dependencies/build output included नहीं हैं; existing environment configuration के साथ fresh build करें।
+Balance source server-owned entitlement ledger है। Existing free poster export policy को इस update में paid-only नहीं बनाया है, और नया raw-video upload/delivery या credit-consumption workflow नहीं बनाया है। Existing/future trusted service backend को delivered work के अनुसार balance update करना है; client को balance लिखने की permission नहीं दी गई है। खरीद की रोक expiry और उपलब्ध trusted balance दोनों को मानती है।
 
-## Deploy order
+## Razorpay interaction fix
 
-### 1. Backend settings और secrets
+App checkout sheet को Razorpay खोलने से पहले पूरी तरह unmount किया जाता है। उसके focus handlers और body scroll lock पहले हटते हैं; उसके बाद gateway iframe/native SDK खुलता है। `payment.failed` attempt event पर app sheet को खुले हुए gateway के ऊपर वापस नहीं लाया जाता। Cancel, debit uncertainty और verification errors success नहीं बनते।
 
-शुरुआत में `functions/.env.YOUR_PROJECT_ID` में `RAZORPAY_MODE=test` और `PAYMENTS_ENABLED=false` रखें। Included project settings में भी यही flags हैं। अपने existing Firebase project/auth/hosting settings रखें।
+## Customer invoice
 
-Secret Manager में `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` configure करें। `PAYMENT_ALLOWED_ORIGINS` में exact HTTPS App और Admin origins रखें। Frontend में gateway secret नहीं डालना है। बाकी merchant/webhook instructions `RAZORPAY_SETUP_HINDI.md` में हैं।
+Verified payment के बाद success screen, My plan और purchase history में **Download invoice** है। `paymentReceipt` callable signed-in owner और test/live mode verify करके stored purchase से data देता है। Pending/unpaid purchase के लिए invoice नहीं मिलता। Invoice में MLM LIVE name, customer/mobile, plan, payment date, amount, discount/GST breakdown, method, order/payment references और refund status हैं।
 
-### 2. Ready full rules और indexes
+PDF लगभग 105 mm wide, one-page receipt है; लंबे names/references के लिए height बढ़ती है। Unicode/Hindi names device canvas font shaping से PDF में जाते हैं। यह payment acknowledgement है; seller GSTIN या legal tax-invoice details invent नहीं किए गए हैं। Browser PDF download करता है। Android updated native shell का existing DOWNLOAD_PDF handler और iOS existing share/save handler use होते हैं। इस update के लिए native source में बदलाव नहीं है।
 
-Admin folder में **`firestore.rules` पहले से मौजूद है**। इस release के लिए `current-production.rules` या rules-installer command चलाने की जरूरत नहीं है। अगर आपके production rules इसके बाद अलग से बदले हैं, deploy से पहले उन बाद के बदलावों को इस full file में preserve करें। `firestore.payment.rules` केवल snippet है; उसे अकेला full replacement न बनाएं।
+## Deploy — existing configuration बचाएं
 
-```bash
-firebase deploy --config firebase.payment.deploy.json --only firestore:rules,firestore:indexes
-```
+1. Latest Admin और Web App archives fresh download करें। Archives का filename 24Nov2026 वाला ही है; इस version के अंदर 25 November update मौजूद है। अपने actual origins, existing Firebase settings और other environment values preserve करें। Secret Manager values को rotate करने की जरूरत नहीं है।
+2. Update के दौरान `functions/.env.mlmbooster-a4887` में `PAYMENTS_ENABLED=false` रखें और `RAZORPAY_MODE=test` ही रहने दें। नीचे का loop पहले order creation बंद करेगा और फिर बाकी updated functions एक-एक करके deploy करेगा।
 
-Indexes ready होने दें। `appPlans/main` पर client और signed-in Master Admin के direct Firestore reads/writes denied हैं; authorized server callables ही catalog पढ़ते/लिखते हैं।
-
-### 3. Admin dependencies, checks और Functions
+Admin root में:
 
 ```bash
 npm ci --legacy-peer-deps
 npm --prefix functions ci
 npm run test:payments
 npm run build
+
+for fn in \
+  paymentCreateOrder \
+  paymentVerify \
+  paymentStatus \
+  processRazorpayWebhook \
+  reconcileRazorpayPayments \
+  paymentCatalog \
+  paymentQuote \
+  paymentHistory \
+  paymentLegacyHistory \
+  paymentEntitlement \
+  paymentReceipt \
+  panelAppPlans \
+  panelSaveAppPlans \
+  panelSavePaymentCompany \
+  panelPaymentOverview \
+  panelReconcilePayment \
+  panelCloseUncreatedPayment \
+  panelAssignPaymentMarketingUsers \
+  razorpayWebhook
+do
+  firebase deploy --project mlmbooster-a4887 --only "functions:$fn" || break
+done
 ```
 
-Payment API अब company selector स्वीकार नहीं करती। इसलिए नीचे दिए updated payment endpoints और Admin functions साथ redeploy करें, फिर updated frontends release करें। Existing auth/OTP functions हटाने या redeploy-all करने की जरूरत नहीं है।
+यह loop CPU-quota वाले bulk deployment की जगह sequential deployment करता है। किसी function पर error आए तो वहीं रुकता है। Success verify करके ही आगे जाएं। Existing auth/OTP functions को delete या deploy-all न करें।
 
-```bash
-firebase deploy --only functions:paymentCatalog,functions:paymentQuote,functions:paymentCreateOrder,functions:paymentVerify,functions:paymentStatus,functions:paymentHistory,functions:paymentLegacyHistory,functions:paymentEntitlement,functions:panelAppPlans,functions:panelSaveAppPlans,functions:panelSavePaymentCompany,functions:panelPaymentOverview,functions:panelReconcilePayment,functions:panelCloseUncreatedPayment,functions:panelAssignPaymentMarketingUsers,functions:panelUpsertMarketingMember,functions:panelUpsertMarketingCoupon,functions:panelDeleteMarketingMember,functions:panelDeleteMarketingCoupon,functions:razorpayWebhook,functions:processRazorpayWebhook,functions:reconcileRazorpayPayments
-```
-
-Razorpay test webhook + matching secret, automatic capture, background webhook worker और scheduled reconciliation configure करें। केवल SDK callback/authorized payment से plan activate नहीं होता; server-confirmed captured `paid` जरूरी है।
-
-### 4. App Plans और frontend release
-
-Corrected Admin build को अपने existing Admin host पर deploy करें। **App Plans** में central plans add और publish करें। Catalog empty होने पर users को plans नहीं दिखेंगे; पुराने company plans अपने-आप central catalog में copy नहीं होते।
-
-Web App folder में:
+3. Web App folder:
 
 ```bash
 npm ci --legacy-peer-deps
@@ -70,33 +83,24 @@ npm run test:payments
 npm run build
 ```
 
-Fresh `dist` अपने existing Web host पर deploy करें। Region `asia-south1` है। Checkout enable करने के लिए test setup के बाद `PAYMENTS_ENABLED=true` करके payment Functions redeploy करें। वास्तविक devices पर test पूरा होने पर ही live keys/mode/webhook configure करें।
+Corrected Admin और Web App दोनों अपने existing hosts पर deploy करें। Existing database rules/indexes इस update में नहीं बदले गए हैं। Fresh install हो तो included full `firestore.rules` और indexes पहले deploy करें; `firestore.payment.rules` snippet अकेले deploy नहीं करना है।
 
-## React Native पर असर
+4. Admin → App Plans में service/amount/validity/credits verify करके Save करें। पुराने validity-only video plans को कोई guessed credit limit नहीं दी गई है।
+5. जब सभी functions और दोनों frontends updated हों, `.env.mlmbooster-a4887` में `PAYMENTS_ENABLED=true` करके केवल यह redeploy करें:
 
-**इस central-plans correction के लिए React Native code में नया बदलाव नहीं है।** Payment Web App शुरू करता है; पहले दिया updated native bridge केवल server-created order को Razorpay SDK में खोलता है। वही bridge इस release के साथ काम करता है। Browser में web checkout चलता है।
+```bash
+firebase deploy --project mlmbooster-a4887 --only functions:paymentCreateOrder
+```
 
-अगर अभी भी SDK bridge से पहले वाला पुराना native shell लगा है, पहले दिए `expomlm_Plan_Integration_24Nov2026.zip` का native build जरूरी है। `react-native-razorpay` native dependency के लिए Expo Go/केवल OTA पर्याप्त नहीं है। Native package में `npm ci`, `npm run test:payments`, `npx expo prebuild` और फिर existing EAS/local release workflow use करें; store version/build numbers बढ़ाएं। इस correction में native source/archive दुबारा नहीं बदला गया है।
+TEST keys/mode और matching webhook secret रखें। Website को hard-refresh करें। Verify करें: Plans tab; only eligible service visible; gateway bank/continue clicks; cancel pending; one verified success; PDF invoice; duplicate purchase blocked; refresh/restart same order। Real device पर UPI switching, native PDF save/share और refund भी validate करें। उसके बाद ही live mode rollout करें।
 
-## पुराने payments और benefits
+## Validation
 
-- पुराने company catalog records सुरक्षित रहते हैं, पर नए quotes/prices उनके आधार पर नहीं बनते।
-- पहले secure Razorpay integration से paid purchases के trusted grants पहली जरूरत पर app-wide ledger में एक बार migrate होते हैं। बची हुई allowance, original dates और revoked flags preserve होते हैं; test/live अलग हैं। नई renewal उसी service के valid paid period के बाद queue होती है।
-- यह automatic migration केवल verified paid purchase + उसके trusted ledger पर लागू है। पुराने PSERVER/manual/client-written subscription rows history में दिखते हैं; उनके benefits के लिए payment proof देखकर controlled migration जरूरी है।
-- One-time paid-purchase scan 100 records तक bounded है; उससे ज्यादा पुराने records हों तो support-assisted migration मांगी जाती है।
-- पुराना unresolved checkout नए app-wide order को रोकता है। उसी payment को **Check payment** से recover करें; cancel/pending/verification failure success नहीं बनते। App restart पर saved checkout भी recover होता है।
-- Poster, Video और Combo grants अलग services हैं। Video-only plan poster downloads नहीं देता। Raw-video upload/editor/service delivery इस correction में नहीं बनाया गया है।
-- Existing free-export editor policy को इस correction में paid-only नहीं बनाया गया है। Central plan purchase/access ledger तैयार है; future protected operations server-side entitlement check use कर सकते हैं।
+- Admin + Web production builds passed.
+- Backend domain/HTTP/rules/UUID checks: 24 passed.
+- Firestore payment integration: 38 passed, provider API mocked.
+- Web client/eligibility/invoice checks: 18 passed.
+- Actual React DOM scenarios: 8 passed — actual Plans tab navigation; gateway interaction/focus/no overlay; cancel/restart; rejected signature; verified success with PDF bridge; Poster/Video/Combo filtering; unsupported old shell; terminal failure without invoice or unverified debit promises.
+- Full production rules are unchanged from the previously verified merged rules. No complete unrelated-feature regression suite or dependency audit was rerun.
 
-## इस correction की validation
-
-- Admin और Web production builds: passed।
-- Backend payment/domain/HTTP/rules-installer/UUID checks: 22 passed।
-- Admin navigation checks: 4 passed।
-- Firestore payment integration: 31 passed; provider API mocked थी।
-- Web client payment checks: 13 passed।
-- Actual Admin App Plans DOM add/save/remove checks: passed; `randomUUID` unavailable case भी passed।
-- Actual Web checkout DOM checks: cancel/pending, restart recovery, verification failure, verified success और unsupported old shell handling passed; provider responses mocked थीं।
-- Full merged production Firestore rules regression: 15 passed।
-
-Production deploy, real merchant transaction या physical-device/APK/IPA test इस workspace से नहीं किया गया है।
+Physical device, real Razorpay iframe/bank transaction and pixel-level browser QA were not executed here. The local browser binary was unavailable and its download was blocked; DOM tests exercise actual components with a mock gateway. Production deployment has not been performed from this workspace.

@@ -1,6 +1,6 @@
 # Payment boundary and security review
 
-Implementation updated: 24 November 2026 (central app plans). This is a code review and test report,
+Implementation updated: 25 November 2026 (central plans, service ownership and receipts). This is a code review and test report,
 not a penetration-test certificate or a guarantee against fraud.
 
 ## Server authority
@@ -74,7 +74,7 @@ aggregates commit atomically. Duplicate callbacks/webhooks cannot grant twice.
   periods keep their original dates. Dispute resolution requires support review.
 - Test/live purchases, queries, stats and entitlements are isolated; test
   subscription records cannot appear in production subscription queries.
-- New grants queue after the latest valid app-wide paid period for the same service. A
+- New service orders are blocked until existing service ownership expires or its credits are exhausted. Old pending captures retain their original fulfilment handling. A
   previous Unlimited plan does not make a later limited plan Unlimited.
 - Plan price ceiling including GST: INR 100,000. Minimum payable INR 1;
   zero/100%-discount orders do not silently create free subscriptions.
@@ -91,8 +91,8 @@ payment invalidates caches. Prices/permissions never rely on cached client data.
 
 | Operation | Bounded work |
 |---|---|
-| Catalog | Rate-limit transaction + one buyer query (max 2), one central app catalog document |
-| Quote / order reservation | Same fresh account/catalog lookup; optional one coupon query and bounded hierarchy chain; order reservation/lock documents |
+| Catalog | Rate-limit transaction + one buyer query (max 2), one central app catalog document + one own entitlement |
+| Quote / order reservation | Same fresh account/catalog + entitlement lookup; optional one coupon query and bounded hierarchy chain; order reservation/lock documents |
 | History | At most 21 purchase records + one entitlement; next page only on demand |
 | Earlier subscriptions | At most 21 legacy records per page, one-minute cache; further pages on demand |
 | Expiry notice | One own app-wide entitlement + rate-limit transaction; initial verified legacy migration bounded to 101 paid purchases, at most 100 migrated |
@@ -135,3 +135,19 @@ References used for implementation:
 - https://top10.owasp.org/2025/0x00_2025-Introduction/
 - https://cheatsheetseries.owasp.org/cheatsheets/Business_Logic_Security_Cheat_Sheet.html
 - https://docs.sheetjs.com/docs/getting-started/installation/frameworks/
+
+## 25 November additions
+
+The catalog filters held services, and quote plus transactional order reservation
+recheck service eligibility. Unlimited/time-only grants do not count as exhausted
+zero-credit plans. A fulfilment preflight rejects ledger/date limits before a new
+provider order is created. Existing idempotent recovery remains available.
+
+The new paymentReceipt callable permits only an authenticated purchase owner in
+the active payment mode. It returns stored captured-purchase fields and no gateway
+secret, signature or commission allocation. Pending orders cannot get an invoice.
+Client PDFs are payment acknowledgements and are not used as payment authority.
+
+The app removes its own payment sheet/focus handlers before external Checkout and
+keeps the sheet removed until Checkout actually returns. UI images supply styling
+only; provider/server responses determine all outcomes.

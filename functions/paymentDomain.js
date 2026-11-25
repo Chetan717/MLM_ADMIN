@@ -109,6 +109,8 @@ function normalizePlan(raw, companyId) {
     Description: text(raw.Description || "", 2000),
     image_url: text(raw.image_url || "", 2048),
     serviceType,
+    videoCredits: raw.videoCredits === undefined || raw.videoCredits === null || raw.videoCredits === ""
+      ? null : integer(raw.videoCredits, 1, 100000000, "video editing credits"),
   };
   if (normalized.image_url && !/^https:\/\//i.test(normalized.image_url))
     fail("failed-precondition", "Plan image must use HTTPS.");
@@ -241,7 +243,7 @@ function nextEntitlement(previous, purchase, now) {
     );
   for (const serviceType of services) {
     const startsAtMs = Math.max(now, ...grants
-      .filter((g) => !g.revoked && (g.serviceType || "poster") === serviceType)
+      .filter((g) => grantHasBalance(g, now) && (g.serviceType || "poster") === serviceType)
       .map((g) => g.expiresAtMs));
     const expiresAtMs = startsAtMs + purchase.plan.Day_value * DAY_MS;
     if (!Number.isSafeInteger(expiresAtMs) || expiresAtMs > 253402300799000)
@@ -257,6 +259,8 @@ function nextEntitlement(previous, purchase, now) {
       expiresAtMs,
       remainingDownloads: serviceType === "poster" ? purchase.plan.downloads : 0,
       unlimitedDownloads: serviceType === "poster" && purchase.plan.unlimitedDownloads === true,
+      ...(serviceType === "video" ? { creditLimit: purchase.plan.videoCredits ?? null,
+        remainingCredits: purchase.plan.videoCredits ?? null } : {}),
       revoked: false,
     });
   }
@@ -281,10 +285,32 @@ function planServices(plan) {
     fail("failed-precondition", "Invalid service type.");
   return kind === "combo" ? ["poster", "video"] : [kind];
 }
+// Service ownership includes paid terms that have not started yet. Exhausted
+// allowances release that service without waiting for the original expiry.
+function grantHasBalance(grant, now) {
+  if (grant.revoked || !(grant.expiresAtMs > now)) return false;
+  if ((grant.serviceType || "poster") === "poster")
+    return grant.unlimitedDownloads === true || Number(grant.remainingDownloads) > 0;
+  return grant.remainingCredits == null || Number(grant.remainingCredits) > 0;
+}
+function purchaseEligibility(entitlement, now) {
+  const held = new Set((entitlement?.grants || []).filter(g => grantHasBalance(g, now))
+    .map(g => g.serviceType || "poster"));
+  return { poster: !held.has("poster"), video: !held.has("video"),
+    combo: !held.has("poster") && !held.has("video") };
+}
+function assertPlanAvailable(entitlement, plan, now) {
+  const eligibility = purchaseEligibility(entitlement, now);
+  if (!eligibility[plan.serviceType || "poster"])
+    fail("failed-precondition", "You already have an active plan for this service. Buy again after it expires or its credits are used.");
+}
+function planHasBenefits(plan) {
+  return !planServices(plan).includes("poster") || plan.unlimitedDownloads === true || plan.downloads > 0;
+}
 function entitlementSummary(value, now) {
   const services = Object.fromEntries(["poster", "video"].map((serviceType) => {
     const usable = (value?.grants || []).filter((g) =>
-      !g.revoked && g.expiresAtMs > now && (g.serviceType || "poster") === serviceType)
+      grantHasBalance(g, now) && (g.serviceType || "poster") === serviceType)
       .sort((a, b) => a.startsAtMs - b.startsAtMs);
     const current = usable.find((g) => g.startsAtMs <= now);
     return [serviceType, {
@@ -293,6 +319,7 @@ function entitlementSummary(value, now) {
       expiresAtMs: usable.length ? Math.max(...usable.map((g) => g.expiresAtMs)) : 0,
       remainingDownloads: current?.remainingDownloads || 0,
       unlimitedDownloads: current?.unlimitedDownloads === true,
+      remainingCredits: current?.remainingCredits ?? null,
       currentPurchaseId: current?.purchaseId || "",
     }];
   }));
@@ -325,5 +352,9 @@ module.exports = {
   nextEntitlement,
   entitlementSummary,
   planServices,
+  grantHasBalance,
+  purchaseEligibility,
+  assertPlanAvailable,
+  planHasBenefits,
   DAY_MS,
 };

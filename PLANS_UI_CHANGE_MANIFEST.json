@@ -1,0 +1,72 @@
+{
+  "release": "MLM LIVE Plans UI / service ownership / invoice — 25 November 2026",
+  "baseline": "24 November central app plans release",
+  "scope": "Subscription UI, tab navigation, server-enforced service eligibility, gateway interaction and authenticated payment invoices",
+  "unchanged_baseline_files": 189,
+  "modified": [
+    {
+      "path": "GLOBAL_PLANS_SETUP_HINDI.md",
+      "before_sha256": "ccff9db5c6a374e2ed6a866dd126a62b57c92275a156c1ab1a3c35de08b52044",
+      "after_sha256": "a63dcac00aebdceefd2da334f309f3a77a03f21e1ec467679dbe445471ab6df1"
+    },
+    {
+      "path": "PAYMENT_SECURITY_REVIEW.md",
+      "before_sha256": "e558083b091794ba583e17327cab58109ec6d6c4e90833361e7c0469759477e8",
+      "after_sha256": "e8cb774c86287135ef6cc3087dc30b9548287919484cb4e8372761729c61f5e1"
+    },
+    {
+      "path": "PAYMENT_VALIDATION.md",
+      "before_sha256": "fd4ebd0cb47ff627ebe94139635cd7409aaa7f8414ed21f2914bd231e48a4687",
+      "after_sha256": "56088725a58be157ee30670d13f4f448758d23f3e1e8fe2678803dd405445620"
+    },
+    {
+      "path": "PLAN_INTEGRATION_SETUP_HINDI.md",
+      "before_sha256": "ccff9db5c6a374e2ed6a866dd126a62b57c92275a156c1ab1a3c35de08b52044",
+      "after_sha256": "a63dcac00aebdceefd2da334f309f3a77a03f21e1ec467679dbe445471ab6df1"
+    },
+    {
+      "path": "RAZORPAY_SETUP_HINDI.md",
+      "before_sha256": "6891f195ced2e85a7f5239f3e65a650b247c56b9a8e749e9423e63699479ac72",
+      "after_sha256": "0ef7fb599308834f310075df566877f693952ba35b1f8e68d90a20074ad6ca00"
+    },
+    {
+      "path": "functions/paymentDomain.js",
+      "before_sha256": "8551c0be24b419205d279b14579576b321415b57f3adf945408496b7bd7e0af8",
+      "after_sha256": "cce3fb219dec3139c1a1f64f5b584bc11a1d922a07165ca24d57bb998508032f"
+    },
+    {
+      "path": "functions/paymentFunctions.js",
+      "before_sha256": "6b2f5c7b2f9ad662459a5648f71bd1288071ba1c6f3cf4939e96485488a9ac32",
+      "after_sha256": "945b9989cf8be501104034aae763c2f5209b75579d201283aa8da6d140cadd14"
+    },
+    {
+      "path": "functions/paymentService.js",
+      "before_sha256": "3459a075ace4aef5e51a59d23345200e557ad32159f76143658d07d09eca0fe9",
+      "after_sha256": "b7cdd71a1edc2524163db9c9254d95b0cd8e8ce0a39f8757028295777693a9b9"
+    },
+    {
+      "path": "src/Pages/Plans/AppPlans.jsx",
+      "before_sha256": "2c3900ce13ecf45bb11ae156db75c423290a680c3c16eb7b5c6d5af7617174ab",
+      "after_sha256": "99076c93385bf1db0a38e4db12872dc4439f4c1c96aac4cc6d39a1bb739b8960"
+    },
+    {
+      "path": "tests/payment.integration.mjs",
+      "before_sha256": "289c2ee4bc8d1e004762c82f0930a6c7761ff0e99a738141c08db3916f6ef752",
+      "after_sha256": "f3777299024e34ab9844e675054d29723454df9830fc52d8143c342257ac3831"
+    },
+    {
+      "path": "tests/paymentDomain.test.mjs",
+      "before_sha256": "d3af55c9bfe6cd6959d221b09049b3f2e2343bad413161d67daf4543fc1147f1",
+      "after_sha256": "2e5b488af67897afb4c4aba1083361086ed0a28ed53e343eb25bbacdf771db14"
+    }
+  ],
+  "added": [
+    {
+      "path": "PLANS_UI_UPDATE_HINDI.md",
+      "sha256": "a63dcac00aebdceefd2da334f309f3a77a03f21e1ec467679dbe445471ab6df1"
+    }
+  ],
+  "removed": [],
+  "native_source_unchanged": true,
+  "validation": "PAYMENT_VALIDATION.md"
+}

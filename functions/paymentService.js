@@ -12,6 +12,7 @@ const LIMITS = {
   status: [40, 200],
   history: [30, 100],
   entitlement: [120, 300],
+  receipt: [30, 100],
 };
 
 function createPaymentService({
@@ -166,6 +167,8 @@ function createPaymentService({
     );
     if (!plan || !plan.Launch)
       D.fail("failed-precondition", "Plan is unavailable. Refresh plans.");
+    if (!D.planHasBenefits(plan))
+      D.fail("failed-precondition", "Poster credits are not configured for this plan. Contact support.");
     const code = D.couponCode(data.couponCode || "");
     let coupon = null,
       members = [];
@@ -251,17 +254,21 @@ function createPaymentService({
   async function catalog(request) {
     D.input(request.data || {}, []);
     const owner = await rate(request, "catalog");
-    const ctx = await context(owner, directReader);
+    const [ctx, entitlement] = await Promise.all([context(owner, directReader), readAppEntitlement(owner)]);
+    const eligibility = D.purchaseEligibility(entitlement, now());
     return { mode: getConfig().mode, scope: "app", appId: "mlmlive", appName: "MLM LIVE",
       version: Number(ctx.catalog?.version || 0),
-      plans: D.appPlans(ctx.catalog).filter((p) => p.Launch),
+      plans: D.appPlans(ctx.catalog).filter((p) => p.Launch && D.planHasBenefits(p) && eligibility[p.serviceType || "poster"]),
+      entitlement, eligibility, serverTimeMs: now(),
       suggestedCoupon: /^[A-Z0-9]{6}$/.test(ctx.user.mteamCouponCode || "") ? ctx.user.mteamCouponCode : "" };
   }
   async function quote(request) {
     D.input(request.data, ["planId", "couponCode"]);
     const owner = await rate(request, "quote");
     D.id(request.data.planId, "plan ID");
-    return publicQuote(await priceContext(owner, request.data));
+    const [ctx, entitlement] = await Promise.all([priceContext(owner, request.data), readAppEntitlement(owner)]);
+    D.assertPlanAvailable(entitlement, ctx.plan, now());
+    return publicQuote(ctx);
   }
   function checkout(purchase) {
     return {
@@ -283,6 +290,9 @@ function createPaymentService({
       serviceGrants: purchase.serviceGrants || [],
       startsAtMs: purchase.startsAtMs || 0,
       subscriptionExpiresAtMs: purchase.subscriptionExpiresAtMs || 0,
+      paymentId: purchase.paymentId || "",
+      paidAtMs: purchase.paidAtMs || 0,
+      paymentMethod: purchase.paymentMethod || "",
     };
   }
   async function create(request) {
@@ -355,6 +365,14 @@ function createPaymentService({
           );
         }
         const ctx = await priceContext(owner, request.data, tx); // Fresh reads and version checks inside the reservation transaction.
+        const entRef = entitlementRef(owner.uid);
+        const entSnapshot = await tx.get(entRef);
+        const entitlement = await loadAppEntitlement(tx, owner, entSnapshot, getConfig().mode);
+        D.assertPlanAvailable(entitlement, ctx.plan, time);
+        // Fail before a payable provider order if the ledger/date cannot accept
+        // the promised grant. Final capture still rechecks inside settlement.
+        D.nextEntitlement(entitlement, { ...owner, id: purchaseId, scope: "app",
+          mode: getConfig().mode, plan: ctx.plan, price: ctx.price }, time);
         if (ctx.quoteId !== request.data.quoteId)
           D.fail(
             "failed-precondition",
@@ -389,12 +407,15 @@ function createPaymentService({
           reconcileCount: 0,
         };
         tx.create(purchaseRef, purchase);
+        // Reading/writing this same ledger serializes order reservation with a
+        // simultaneous payment activation or trusted credit update.
+        if (!entSnapshot.exists || entSnapshot.data().scope !== "app") tx.set(entRef, entitlement);
         tx.set(lockRef, { purchaseId, uid: owner.uid, createdAtMs: time });
         return { purchase, isNew: true };
       });
     } catch (error) {
       // Validation failed before reservation or provider POST.
-      if (error instanceof D.PaymentError && ["failed-precondition", "invalid-argument", "permission-denied"].includes(error.code))
+      if (error instanceof D.PaymentError && ["failed-precondition", "invalid-argument", "permission-denied", "resource-exhausted"].includes(error.code))
         error.details = { checkoutNotCreated: true };
       throw error;
     }
@@ -622,6 +643,7 @@ function createPaymentService({
         paymentId: payment.id,
         subscriptionId,
         paidAtMs: time,
+        paymentMethod: typeof payment.method === "string" ? payment.method.slice(0, 40) : "",
         updatedAtMs: time,
         refundedPaise,
         startsAtMs: grant.startsAtMs,
@@ -702,6 +724,8 @@ function createPaymentService({
       return checkout({
         ...purchase,
         status,
+        paidAtMs: time,
+        paymentMethod: typeof payment.method === "string" ? payment.method.slice(0, 40) : "",
         subscriptionId,
         paymentId: payment.id,
         startsAtMs: grant.startsAtMs,
@@ -918,6 +942,22 @@ function createPaymentService({
     D.input(request.data || {}, []);
     const owner = await rate(request, "entitlement");
     return { entitlement: await readAppEntitlement(owner) };
+  }
+  async function receipt(request) {
+    D.input(request.data, ["purchaseId"]);
+    const owner = await rate(request, "receipt");
+    const purchase = await owned(owner, request.data.purchaseId);
+    if (!purchase.paymentId || !["paid", "refunded", "partially_refunded", "disputed"].includes(purchase.status))
+      D.fail("failed-precondition", "An invoice is available after payment has been verified.");
+    return { invoice: { merchant: "MLM LIVE", invoiceId: purchase.id,
+      customerName: purchase.userName || "Customer", mobileNo: owner.mobileNo,
+      planName: purchase.plan.PlanName, serviceType: purchase.plan.serviceType || "poster",
+      durationDays: purchase.plan.Day_value, currency: "INR", price: purchase.price,
+      orderId: purchase.orderId, paymentId: purchase.paymentId,
+      paymentMethod: purchase.paymentMethod || "Razorpay", mode: purchase.mode,
+      status: purchase.status, paidAtMs: purchase.paidAtMs || purchase.createdAtMs,
+      startsAtMs: purchase.startsAtMs || 0, expiresAtMs: purchase.subscriptionExpiresAtMs || 0,
+      refundedPaise: purchase.refundedPaise || 0 } };
   }
   async function applyReversal(purchaseId, payment, disputed) {
     await db.runTransaction(async (tx) => {
@@ -1303,6 +1343,7 @@ function createPaymentService({
     history,
     legacyHistory,
     entitlement,
+    receipt,
     webhook,
     adminSummary,
     adminList,

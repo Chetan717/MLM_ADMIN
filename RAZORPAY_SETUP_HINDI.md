@@ -1,3 +1,5 @@
+> 25 Nov update: पहले `PLANS_UI_UPDATE_HINDI.md` पढ़ें। Service overlap अब blocked है; नया `paymentReceipt` endpoint और updated frontends deploy करें।
+
 > 24 Nov 2026 correction: plans पूरे app के लिए central हैं। Admin → App Plans से manage करें। पहले `GLOBAL_PLANS_SETUP_HINDI.md` पढ़ें। इस archive में full merged `firestore.rules` मौजूद है।
 
 # MLMLIVE Razorpay — App + Admin setup
@@ -131,7 +133,7 @@ ko delete/TTL na karein: permanent deduplication un par depend karti hai.
 ## 6. Sirf nayi payment Functions deploy karein
 
 ```bash
-firebase deploy --only functions:paymentCatalog,functions:paymentQuote,functions:paymentCreateOrder,functions:paymentVerify,functions:paymentStatus,functions:paymentHistory,functions:paymentLegacyHistory,functions:paymentEntitlement,functions:panelAppPlans,functions:panelSaveAppPlans,functions:panelSavePaymentCompany,functions:panelAssignPaymentMarketingUsers,functions:panelUpsertMarketingMember,functions:panelUpsertMarketingCoupon,functions:panelDeleteMarketingMember,functions:panelDeleteMarketingCoupon,functions:panelPaymentOverview,functions:panelReconcilePayment,functions:panelCloseUncreatedPayment,functions:razorpayWebhook,functions:processRazorpayWebhook,functions:reconcileRazorpayPayments
+firebase deploy --only functions:paymentCatalog,functions:paymentQuote,functions:paymentCreateOrder,functions:paymentVerify,functions:paymentStatus,functions:paymentHistory,functions:paymentLegacyHistory,functions:paymentEntitlement,functions:paymentReceipt,functions:panelAppPlans,functions:panelSaveAppPlans,functions:panelSavePaymentCompany,functions:panelAssignPaymentMarketingUsers,functions:panelUpsertMarketingMember,functions:panelUpsertMarketingCoupon,functions:panelDeleteMarketingMember,functions:panelDeleteMarketingCoupon,functions:panelPaymentOverview,functions:panelReconcilePayment,functions:panelCloseUncreatedPayment,functions:razorpayWebhook,functions:processRazorpayWebhook,functions:reconcileRazorpayPayments
 ```
 
 Existing auth/OTP functions ko delete ya redeploy-all karke replace na karein.
@@ -216,7 +218,7 @@ trusted entitlements mein automatically convert nahi kiya gaya. Existing legacy
 subscriber ka remaining period carry forward karne se pehle Admin ko original
 payment proof verify karke controlled migration karni hogi. Pehle secure payment integration ke verified paid grants apni original dates
 aur remaining allowances ke saath app-wide migrate hote hain. Naye verified
-Razorpay renewals app-wide same-service paid periods ke baad queue hote hain.
+Naye service checkouts active ownership ke expire ya credits exhaust hone par hi milte hain. Old pending captured payments apna original fulfilment rakhte hain.
 PSERVER/manual rows bina verified proof ke trusted benefits nahi banate.
 
 Receipt payment acknowledgement hai, GST tax invoice nahi. GST 18% discount ke

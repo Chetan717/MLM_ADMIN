@@ -146,11 +146,12 @@ test('refund before first confirmation records received/refunded totals but neve
   assert.equal((await db.doc('paymentStats/test_global').get()).data().netReceivedPaise, 0);
   const subscriptions = await db.collection('paymentTestSubscriptions').get(); assert.equal(subscriptions.docs[0].data().Active, false);
 });
-test('renewal queues app-wide and does not extend twice after retries', async () => {
+test('renewal is blocked while active and starts after expiry without duplicate retry grants', async () => {
   const first = await create(await quote()), payment1 = capture(first); await verify(first, payment1);
-  time += 1000; const second = await create(await quote()), payment2 = capture(second); await verify(second, payment2); await verify(second, payment2);
+  await assert.rejects(quote(), /already have an active plan/);
+  time += 30 * D.DAY_MS + 1000; const second = await create(await quote()), payment2 = capture(second); await verify(second, payment2); await verify(second, payment2);
   const ent = (await service.history(req({}))).entitlement;
-  assert.equal(ent.grants.length, 2); assert.equal(ent.grants[0].expiresAtMs, ent.grants[1].startsAtMs); assert.equal(ent.expiresAtMs - ent.startsAtMs, 60 * D.DAY_MS);
+  assert.equal(ent.grants.length, 2); assert(ent.grants[0].expiresAtMs <= ent.grants[1].startsAtMs); assert.equal(ent.grants[1].startsAtMs,time); assert.equal(ent.expiresAtMs - ent.startsAtMs, 30 * D.DAY_MS);
 });
 test('kill switch, mode mismatch, expired identity, and rate limits fail closed', async () => {
   const q = await quote(); config.enabled = false; await assert.rejects(create(q), { code: 'failed-precondition' }); config.enabled = true;
@@ -370,7 +371,8 @@ test('legacy paid allowances migrate once with their balances, validity and test
   let ent=(await service.entitlement(req({}))).entitlement;
   assert.equal(ent.grants.length,1);assert.equal(ent.remainingDownloads,17);assert.equal(ent.expiresAtMs,expires);
   ent=(await service.entitlement(req({}))).entitlement;assert.equal(ent.grants.length,1);
-  const order=await create(await quote());await verify(order,capture(order));
+  await assert.rejects(quote(),/already have an active plan/);
+  time=expires;const order=await create(await quote());await verify(order,capture(order));
   ent=(await service.entitlement(req({}))).entitlement;
   assert.equal(ent.grants.length,2);assert.equal(ent.grants[1].startsAtMs,expires);
   orders.set('order_legacy',{id:'order_legacy',amount:price.totalPaise,currency:'INR',receipt:legacyId,status:'paid',amount_paid:price.totalPaise,amount_due:0,notes:{purchaseId:legacyId,ownerHash:D.hash(UID)}});
@@ -393,4 +395,72 @@ test('a known test purchase ID cannot produce a success response from live payme
   const order=await create(await quote());await verify(order,capture(order));
   config.mode='live';config.keyId='rzp_live_example';gateway.keyId=config.keyId;
   await assert.rejects(service.status(req({purchaseId:order.purchaseId})),{code:'not-found'});
+});
+
+const createSelected=q=>service.create(req({planId:q.plan.planId,couponCode:q.couponCode,quoteId:q.quoteId,requestId:crypto.randomUUID()}));
+const centralPlans=()=>[
+ {...plan,planId:'poster_a',serviceType:'poster'}, {...plan,planId:'poster_b',serviceType:'poster'},
+ {...plan,planId:'video_a',serviceType:'video',videoCredits:3}, {...plan,planId:'video_b',serviceType:'video',videoCredits:5},
+ {...plan,planId:'combo_a',serviceType:'combo',videoCredits:3},
+];
+const quoteSelected=id=>service.quote(req({planId:id,couponCode:''}));
+test('active Poster hides every Poster and Combo, permits Video, and rejects stale direct order requests',async()=>{
+ await db.doc('appPlans/main').update({Plans:centralPlans()});
+ const stale=await quoteSelected('poster_b');
+ const first=await createSelected(await quoteSelected('poster_a'));await verify(first,capture(first));
+ assert.deepEqual((await service.catalog(req({}))).plans.map(p=>p.planId),['video_a','video_b']);
+ await assert.rejects(quoteSelected('poster_b'),/already have an active plan/);
+ await assert.rejects(quoteSelected('combo_a'),/already have an active plan/);
+ await assert.rejects(createSelected(stale),/already have an active plan/);assert.equal(posts,1);
+ const second=await createSelected(await quoteSelected('video_a'));await verify(second,capture(second));
+ assert.equal((await service.catalog(req({}))).plans.length,0);
+});
+test('active Video permits Poster only; exhausted credits release Video while Combo stays blocked by Poster',async()=>{
+ await db.doc('appPlans/main').update({Plans:centralPlans()});
+ const video=await createSelected(await quoteSelected('video_a'));await verify(video,capture(video));
+ assert.deepEqual((await service.catalog(req({}))).plans.map(p=>p.planId),['poster_a','poster_b']);
+ const poster=await createSelected(await quoteSelected('poster_a'));await verify(poster,capture(poster));
+ const ref=db.doc('paymentEntitlements/'+D.hash(`test:${UID}:app:mlmlive`)),ledger=(await ref.get()).data();
+ await ref.update({grants:ledger.grants.map(g=>g.serviceType==='video'?{...g,remainingCredits:0}:g)});
+ assert.deepEqual((await service.catalog(req({}))).plans.map(p=>p.planId),['video_a','video_b']);
+ const used=(await ref.get()).data();await ref.update({grants:used.grants.map(g=>({...g,remainingDownloads:0,remainingCredits:0}))});
+ assert.equal((await service.catalog(req({}))).plans.length,5);
+ await quoteSelected('combo_a');
+});
+test('Combo hides the buy list until services expire; unlimited and time-only video are not mistaken for zero credits',async()=>{
+ await db.doc('appPlans/main').update({Plans:centralPlans().map(p=>({...p,unlimitedDownloads:true,videoCredits:null}))});
+ const combo=await createSelected(await quoteSelected('combo_a'));await verify(combo,capture(combo));
+ assert.equal((await service.catalog(req({}))).plans.length,0);
+ time+=30*D.DAY_MS;
+ assert.equal((await service.catalog(req({}))).plans.length,5);
+});
+test('concurrent different-plan requests reserve only one provider order',async()=>{
+ await db.doc('appPlans/main').update({Plans:centralPlans()});
+ const [a,b]=await Promise.all([quoteSelected('poster_a'),quoteSelected('combo_a')]);
+ const results=await Promise.allSettled([createSelected(a),createSelected(b)]);
+ assert.equal(results.filter(r=>r.status==='fulfilled').length,1);assert.equal(posts,1);
+});
+test('payment invoice requires a captured owned purchase and excludes secrets, commissions and other accounts',async()=>{
+ const order=await create(await quote());
+ await assert.rejects(service.receipt(req({purchaseId:order.purchaseId})),/after payment has been verified/);
+ const payment=capture(order);payment.method='netbanking';await verify(order,payment);
+ const result=(await service.receipt(req({purchaseId:order.purchaseId}))).invoice;
+ assert.equal(result.merchant,'MLM LIVE');assert.equal(result.price.totalPaise,order.price.totalPaise);assert.equal(result.paymentMethod,'netbanking');assert.equal(result.paymentId,payment.id);
+ for(const key of ['keySecret','keyId','commissions','couponId','razorpay_signature'])assert.equal(key in result,false);
+ const other={...req({purchaseId:order.purchaseId}),auth:{uid:'mobile_8888888888',token:{mobileNo:'8888888888',auth_time:time/1000}}};
+ await assert.rejects(service.receipt(other),{code:'not-found'});
+ config.mode='live';config.keyId='rzp_live_example';await assert.rejects(service.receipt(req({purchaseId:order.purchaseId})),{code:'not-found'});
+});
+
+test('a full historical grant ledger is refused before a payable provider order is created',async()=>{
+ const ledger={uid:UID,mobileNo,scope:'app',appId:'mlmlive',mode:'test',grants:Array.from({length:128},(_,i)=>({purchaseId:'used_'+i,serviceType:'poster',startsAtMs:time-1000,expiresAtMs:time+1000,remainingDownloads:0,revoked:false}))};
+ await db.doc('paymentEntitlements/'+D.hash(`test:${UID}:app:mlmlive`)).set(ledger);
+ await assert.rejects(create(await quote()),{code:'resource-exhausted',details:{checkoutNotCreated:true}});assert.equal(posts,0);
+});
+
+
+test('a published zero-credit limited Poster plan cannot create a chargeable order',async()=>{
+ await db.doc('appPlans/main').update({Plans:[{...plan,downloads:0,unlimitedDownloads:false}]});
+ assert.equal((await service.catalog(req({}))).plans.length,0);
+ await assert.rejects(quote(),/credits are not configured/);assert.equal(posts,0);
 });

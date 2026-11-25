@@ -101,3 +101,29 @@ test('the central catalog namespace gives legacy app rows stable identifiers',()
  assert.equal(a[0].planId,b[0].planId);
  assert.deepEqual(D.appPlans(null),[]);
 });
+
+test('service purchase eligibility follows balances, unlimited plans, revocations and exact expiry',()=>{
+ const now=1800000000000;
+ const grant=(serviceType,extra={})=>({purchaseId:'paid',serviceType,startsAtMs:now-1,expiresAtMs:now+1000,remainingDownloads:2,remainingCredits:3,...extra});
+ const allowed=grants=>D.purchaseEligibility({grants},now);
+ assert.deepEqual(allowed([]),{poster:true,video:true,combo:true});
+ assert.deepEqual(allowed([grant('poster')]),{poster:false,video:true,combo:false});
+ assert.deepEqual(allowed([grant('video')]),{poster:true,video:false,combo:false});
+ assert.deepEqual(allowed([grant('poster'),grant('video')]),{poster:false,video:false,combo:false});
+ assert.equal(allowed([grant('poster',{remainingDownloads:0})]).poster,true);
+ assert.equal(allowed([grant('poster',{remainingDownloads:0,unlimitedDownloads:true})]).poster,false);
+ assert.equal(allowed([grant('video',{remainingCredits:null})]).video,false);
+ assert.equal(allowed([grant('video',{remainingCredits:0})]).video,true);
+ assert.equal(allowed([grant('video',{expiresAtMs:now})]).video,true);
+ assert.equal(allowed([grant('poster',{revoked:true})]).poster,true);
+ assert.equal(allowed([grant('poster',{startsAtMs:now+500})]).poster,false);
+ assert.throws(()=>D.assertPlanAvailable({grants:[grant('poster')]},{serviceType:'combo'},now),/already have an active plan/);
+});
+test('exhausted grants do not push a new plan into a future renewal period',()=>{
+ const time=1800000000000,p={id:'new',uid:'u',mobileNo:'9999999999',scope:'app',mode:'test',plan};
+ const before={grants:[{purchaseId:'used',serviceType:'poster',startsAtMs:time-1000,expiresAtMs:time+30*D.DAY_MS,remainingDownloads:0}]};
+ const after=D.nextEntitlement(before,p,time);assert.equal(after.grants.find(g=>g.purchaseId==='new').startsAtMs,time);
+ const v=D.nextEntitlement(null,{...p,plan:{...plan,serviceType:'video',videoCredits:4}},time);
+ assert.equal(v.grants[0].remainingCredits,4);assert.equal(v.services.video.remainingCredits,4);
+ assert.throws(()=>D.normalizePlan({...plan,videoCredits:-1},'app'));
+});

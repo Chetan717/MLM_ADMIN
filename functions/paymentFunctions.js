@@ -232,6 +232,8 @@ module.exports = function paymentFunctions({
     if (!Array.isArray(request.data.plans)) D.fail("invalid-argument", "Plans must be a list.");
     const expectedVersion = D.integer(request.data.expectedVersion, 0, Number.MAX_SAFE_INTEGER, "catalog version");
     const plans = D.appPlans({ Plans: request.data.plans });
+    if (plans.some(p => p.Launch && !D.planHasBenefits(p)))
+      D.fail("failed-precondition", "Published Poster/Combo plans need at least one poster credit or Unlimited poster downloads.");
     const ref = db.collection("appPlans").doc("main");
     await db.runTransaction(async (tx) => {
       const current = await tx.get(ref);
@@ -297,6 +299,7 @@ module.exports = function paymentFunctions({
       base,
       wrap("payment_entitlement_denied", service.entitlement),
     ),
+    paymentReceipt: onCall(base, wrap("payment_receipt_denied", service.receipt)),
     panelSavePaymentCompany: onCall(
       base,
       wrap("payment_company_write_denied", companySave),
