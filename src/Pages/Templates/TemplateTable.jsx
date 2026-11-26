@@ -1,5 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Ellipsis } from "@gravity-ui/icons";
+import SearchableSelect from "../../components/SearchableSelect.jsx";
 import { Pagination } from "./TempHome";
 
 import { browserTemplateStorage, moveTemplateId, orderTemplateRows, readTemplateListPreferences, writeTemplateListPreferences } from "./templateListPreferences.js";
@@ -92,7 +93,7 @@ function QualityStatusPills({ quality }) {
 function EmptyState({ filtered, type }) {
   return (
     <tr>
-      <td colSpan={10} className="py-20 text-center">
+      <td colSpan={11} className="py-20 text-center">
         <div className="flex flex-col items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
             <Ellipsis className="w-6 h-6 text-gray-400" />
@@ -109,7 +110,7 @@ function EmptyState({ filtered, type }) {
   );
 }
 
-const SectionTable = memo(function SectionTable({ templates, onSelect, filtered, type, companiesMap, qualityStatusMap, recentChanges, view, arranging, onMove }) {
+const SectionTable = memo(function SectionTable({ templates, onSelect, filtered, type, companiesMap, qualityStatusMap, recentChanges, view, arranging, onMove, accessControl }) {
   const [page, setPage] = useState(1);
   const [dragging, setDragging] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
@@ -202,6 +203,7 @@ const SectionTable = memo(function SectionTable({ templates, onSelect, filtered,
                 <TableHeader>Company Name</TableHeader>
                 <TableHeader>Type</TableHeader>
                 <TableHeader>Select Type</TableHeader>
+                <TableHeader>Access</TableHeader>
                 <TableHeader>Subtype</TableHeader>
                 <TableHeader>Date</TableHeader>
                 <TableHeader className="text-center">Graphics</TableHeader>
@@ -237,6 +239,7 @@ const SectionTable = memo(function SectionTable({ templates, onSelect, filtered,
                     <td className="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs">
                       {tpl.SelectType ? tpl.SelectType.replace(/_/g, " ") : <span className="text-gray-300 dark:text-gray-600">—</span>}
                     </td>
+                    <td className="px-4 py-3">{accessControl(tpl)}</td>
                     <td className="px-4 py-3 text-gray-500 dark:text-gray-400 max-w-[140px] truncate text-xs">
                       {tpl.Subtype || <span className="text-gray-300 dark:text-gray-600">—</span>}
                     </td>
@@ -271,6 +274,7 @@ const SectionTable = memo(function SectionTable({ templates, onSelect, filtered,
               className={`p-4 rounded-2xl border bg-white dark:bg-gray-900 space-y-3 ${dropTarget === tpl.id ? "border-violet-500 outline outline-violet-300" : recentChanges[tpl.id] ? "border-amber-300 dark:border-amber-500/40" : "border-gray-200 dark:border-gray-800"}`}>
               <div className="flex items-start justify-between gap-2 flex-wrap">
                 <span className={`px-2 py-1 rounded-full text-xs font-semibold ${typeBadge(tpl.MainType)}`}>{tpl.MainType} · #{tpl.serial ?? "—"}</span>
+                {accessControl(tpl)}
                 <RecentBadge change={recentChanges[tpl.id]} />
               </div>
               {controls(tpl, (currentPage - 1) * PAGE_SIZE + i)}
@@ -293,7 +297,7 @@ const SectionTable = memo(function SectionTable({ templates, onSelect, filtered,
 // The order is an Admin presentation preference. Template serials and public
 // catalog order are not rewritten by arranging this list.
 export default function TemplateTable({
-  templates, allTemplates = templates, onSelect, filtered, companiesMap,
+  templates, allTemplates = templates, onSaveAccess, onSelect, filtered, companiesMap,
   qualityStatusMap, activeTab, onTabChange, recentChanges = {}, recentRequest = 0, storageScope,
 }) {
   const [preferences, setPreferences] = useState(() => readTemplateListPreferences(browserTemplateStorage(), storageScope));
@@ -312,6 +316,47 @@ export default function TemplateTable({
   const recentCount = ordered.filter(row => recentChanges[row.id]).length;
   const showRecent = recentOnly && recentCount > 0;
   const shown = showRecent ? ordered.filter(row => recentChanges[row.id]) : ordered;
+  const [accessFilter, setAccessFilter] = useState("");
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [savingAccess, setSavingAccess] = useState(false);
+  const [bulkMessage, setBulkMessage] = useState("");
+  const matching = accessFilter ? shown.filter(t => (t.templateAccess || "free") === accessFilter) : shown;
+  const targets = matching.filter(t => selectedIds.has(t.id)).map(t => t.id);
+  const selectRow = (id, checked) => setSelectedIds(previous => {
+    const next = new Set(previous);
+    if (checked) next.add(id);
+    else next.delete(id);
+    return next;
+  });
+  const accessControl = tpl => {
+    const label = tpl.templateAccess === "premium" ? "Premium" : "Free";
+    if (!onSaveAccess) return label;
+    return <label className="inline-flex items-center gap-2 text-xs" onClick={e => e.stopPropagation()}>
+      <input type="checkbox" aria-label={`Select template ${tpl.id}`} checked={selectedIds.has(tpl.id)}
+        disabled={savingAccess} onChange={e => selectRow(tpl.id, e.target.checked)} />{label}
+    </label>;
+  };
+  async function applyAccess(access) {
+    if (!onSaveAccess || savingAccess || !targets.length) return;
+    setSavingAccess(true);
+    setBulkMessage("");
+    let saved = 0;
+    try {
+      await onSaveAccess(targets, access, ids => {
+        saved += ids.length;
+        setSelectedIds(previous => {
+          const next = new Set(previous);
+          ids.forEach(id => next.delete(id));
+          return next;
+        });
+      });
+      setBulkMessage(`Updated ${saved} template(s).`);
+    } catch {
+      setBulkMessage(`Saved ${saved} of ${targets.length}. The remaining templates are selected for retry.`);
+    } finally {
+      setSavingAccess(false);
+    }
+  }
   const move = (source, target, placement) => {
     const ids = orderTemplateRows(allTemplates.filter(row => row.MainType === activeTab), preferences.order[activeTab]).map(row => row.id);
     const next = moveTemplateId(ids, source, target, placement);
@@ -338,10 +383,26 @@ export default function TemplateTable({
         {recentCount > 0 && <button type="button" aria-pressed={showRecent} className={`${toolButton} bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300`}
           onClick={() => setRecentOnly(value => !value)}>{showRecent ? "Show all templates" : `Recently changed (${recentCount})`}</button>}
       </div>
+      <div className="flex flex-wrap gap-3 items-center text-sm">
+        <SearchableSelect aria-label="Filter by template access" value={accessFilter} onChange={e => setAccessFilter(e.target.value)}>
+          <option value="">All access levels</option><option value="free">Free</option><option value="premium">Premium</option>
+        </SearchableSelect>
+        {onSaveAccess && <>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" disabled={savingAccess || !matching.length} checked={targets.length > 0 && targets.length === matching.length}
+              onChange={e => setSelectedIds(new Set(e.target.checked ? matching.map(t => t.id) : []))} />
+            Select all filtered ({matching.length})
+          </label>
+          <span>{targets.length} selected</span>
+          <button type="button" className={toolButton} disabled={savingAccess || !targets.length} onClick={() => applyAccess("free")}>Bulk Free</button>
+          <button type="button" className={toolButton} disabled={savingAccess || !targets.length} onClick={() => applyAccess("premium")}>Bulk Premium</button>
+          {bulkMessage && <span role="status">{bulkMessage}</span>}
+        </>}
+      </div>
       {recentCount > 0 && <p className="text-xs text-amber-700 dark:text-amber-400">Recently Added / Recently Updated flags stay until Refresh or reopening the app.</p>}
       {arranging && <p className="text-xs text-violet-600 dark:text-violet-400">Drag a handle or use the arrows to move templates. Admin list order is saved in this browser.</p>}
       {!storageOk && <p role="status" className="text-xs text-amber-700">Browser storage is unavailable. This arrangement will last until you reload.</p>}
-      <SectionTable key={`${activeTab}:${showRecent}`} templates={shown} onSelect={onSelect} filtered={filtered || showRecent}
+      <SectionTable key={`${activeTab}:${showRecent}`} templates={matching} accessControl={accessControl} onSelect={onSelect} filtered={filtered || showRecent || Boolean(accessFilter)}
         type={activeTab} companiesMap={companiesMap} qualityStatusMap={qualityStatusMap} recentChanges={recentChanges}
         view={preferences.view} arranging={arranging} onMove={move} />
     </div>

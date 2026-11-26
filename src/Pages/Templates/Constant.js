@@ -94,7 +94,10 @@ export const emptyGraphicsLink = () => ({
   pass: "", // password-protected delete (checked against "5688")
 });
 
+export const TEMPLATE_ACCESS = [{ name: "Free", value: "free" }, { name: "Premium", value: "premium" }];
+
 export const INITIAL_FORM = {
+  templateAccess: "free",
   MainType: "",
   SelectType: "",
   Subtype: "",

@@ -67,6 +67,7 @@ export default function ImageUploadInput({
   placeholder = "https://example.com/image.webp",
   disabled = false,
   provider = "r2",
+  onUploadStateChange,
 }) {
   const fileRef  = useRef(null);
   const dragDepth = useRef(0);
@@ -90,6 +91,7 @@ export default function ImageUploadInput({
 
       if (String(value || "").trim() && !window.confirm("Replace this media URL? The previous image/video may be used elsewhere. Only this field will change; its R2 file will NOT be deleted. Save the form to confirm.")) return;
 
+      onUploadStateChange?.(true);
       setStatus("uploading");
       setProgress(0);
       setErrMsg("");
@@ -110,6 +112,10 @@ export default function ImageUploadInput({
           isPublicPreview ? 0.8 : 0.85,
           isPublicPreview ? 1600 : null,
         );
+
+        if (normalizedStoragePath === "companies/plans" && webpBlob.type !== "image/webp") {
+          throw new Error("This browser could not encode the plan image as WebP. Try a different browser.");
+        }
 
         // 2 — All supported Admin media uploads use signed R2 URLs; no Firebase fallback.
         const fileName = genName();
@@ -133,9 +139,11 @@ export default function ImageUploadInput({
         setErrMsg(err.message || "Upload failed. Please try again.");
         setStatus("error");
         setProgress(null);
+      } finally {
+        onUploadStateChange?.(false);
       }
     },
-    [storagePath, onChange, provider]
+    [storagePath, onChange, value, onUploadStateChange]
   );
 
   const handleFile = useCallback((e) => {

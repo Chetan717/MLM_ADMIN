@@ -41,6 +41,18 @@ export function rememberTemplateChange(id, changes, kind = "updated") {
   // main list; invalidate both sides of moves, copies and deletes.
   adminReadCache.invalidatePrefix(uid, `templates:${COLLECTIONS.MLMTEMPLATE}:company:`);
 }
+// Update the cached collection once per confirmed batch, without reserializing
+// the entire catalog for each selected template.
+export function rememberTemplateAccess(uid, ids, templateAccess) {
+  const name = COLLECTIONS.MLMTEMPLATE;
+  const selected = new Set(ids);
+  const changes = { templateAccess, updatedAt: new Date() };
+  adminReadCache.change(uid, collectionKey(name), rows =>
+    rows.map(row => selected.has(row.id) ? { ...row, ...changes } : row));
+  adminReadCache.invalidatePrefix(uid, `templates:${name}:company:`);
+  for (const id of ids) adminSavedChanges.remember(uid, name, id, changes, "updated");
+}
+
 export function invalidateAdminQuality() {
   adminReadCache.invalidate(auth.currentUser?.uid, collectionKey(COLLECTIONS.TEMPLATEQUALITY));
 }

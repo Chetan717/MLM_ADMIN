@@ -17,7 +17,7 @@ import {
   FieldLabel,
 } from "../GraphicsLinkRow";
 import {
-  MAIN_TYPES,
+  MAIN_TYPES, TEMPLATE_ACCESS,
   POSITION_OPTIONS,
   INITIAL_FORM,
   emptyGraphicsLink,
@@ -187,6 +187,7 @@ export default function AddTemplate() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <SelectField label="Main Type"   value={form.MainType}   onChange={handleMainTypeChange}      options={MAIN_TYPES}       placeholder="Select main type…" required />
             <SelectField label="Select Type" value={form.SelectType} onChange={handleSelectTypeChange}    options={selectTypeOptions} placeholder={form.MainType ? "Select type…" : "Choose Main Type first"} required disabled={!form.MainType} />
+            <SelectField label="Template access" value={form.templateAccess} onChange={handleText("templateAccess")} options={TEMPLATE_ACCESS} required />
           </div>
 
           {/* Subtype — free-text, always visible */}

@@ -2,7 +2,8 @@ import SearchableSelect from "../../components/SearchableSelect.jsx";
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { httpsCallable } from "firebase/functions";
-import { auth, functions } from "../../../Firebase";
+import { doc, serverTimestamp, writeBatch } from "firebase/firestore";
+import { auth, db, functions } from "../../../Firebase";
 import {
   CirclePlus,
   ArrowRotateRight,
@@ -23,7 +24,7 @@ import {
 } from "./qualityUtils";
 import { getAdminSession } from "../../Utils/adminSession";
 import IssueFollowup from "./IssueFollowup";
-import { readAdminTemplates, readAdminCompanies, readAdminQuality } from "../../Utils/adminTemplateReads";
+import { readAdminTemplates, readAdminCompanies, readAdminQuality, rememberTemplateAccess } from "../../Utils/adminTemplateReads";
 import { COLLECTIONS } from "../../collections";
 import { adminSavedChanges } from "../../Utils/adminSavedChanges.js";
 import { useAdminSavedRows, useRecentTemplateChanges } from "../../Utils/useAdminSavedRows.js";
@@ -276,6 +277,22 @@ export default function TemplateHome() {
   );
 
   // ── Export filtered templates (full Firestore doc data + id) as JSON ─────
+  const saveTemplateAccess = async (ids, access, onCommitted) => {
+    if (!canOperation || !["free", "premium"].includes(access)) throw new Error("Template access cannot be updated.");
+    const uid = auth.currentUser?.uid;
+    for (let offset = 0; offset < ids.length; offset += 400) {
+      if (!uid || auth.currentUser?.uid !== uid) throw new Error("Admin session changed.");
+      const group = ids.slice(offset, offset + 400);
+      const batch = writeBatch(db);
+      for (const id of group) {
+        batch.update(doc(db, COLLECTIONS.MLMTEMPLATE, id), { templateAccess: access, updatedAt: serverTimestamp() });
+      }
+      await batch.commit();
+      rememberTemplateAccess(uid, group, access);
+      onCommitted(group);
+    }
+  };
+
   const handleExportJSON = useCallback(() => {
     if (shownTemplates.length === 0) return;
     const dataStr = JSON.stringify(shownTemplates, null, 2);
@@ -574,6 +591,7 @@ export default function TemplateHome() {
 
       {!loading && fetched && (
         <TemplateTable
+          onSaveAccess={canOperation ? saveTemplateAccess : null}
           templates={filtered}
           allTemplates={allTemplates}
           onSelect={handleSelect}

@@ -1,6 +1,6 @@
 import SearchableSelect from "../../../components/SearchableSelect.jsx";
 import useUnsavedFormGuard from "../../../Utils/useUnsavedFormGuard";
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import {
   collection, doc, getDoc, getDocs, deleteDoc,
@@ -23,7 +23,7 @@ import {
   FieldLabel,
 } from "../GraphicsLinkRow";
 import {
-  MAIN_TYPES,
+  MAIN_TYPES, TEMPLATE_ACCESS,
   INITIAL_FORM,
   emptyGraphicsLink,
   getSelectTypes,
@@ -203,6 +203,7 @@ export default function EditTemplate() {
 
   const [form,          setForm]          = useState(null);
   const [fetchLoading,  setFetchLoading]  = useState(true);
+  const originalAccess = useRef("free");
   const [saveLoading,   setSaveLoading]   = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [showDelete,    setShowDelete]    = useState(false);
@@ -250,7 +251,9 @@ export default function EditTemplate() {
           ? normalizedGraphics
           : [emptyGraphicsLink()];
         if (!cancelled) {
+          originalAccess.current = d.templateAccess === "premium" ? "premium" : "free";
           setForm({
+            templateAccess: originalAccess.current,
             MainType:     d.MainType     || "",
             SelectType:   d.SelectType   || "",
             Subtype:      d.Subtype      || "",
@@ -353,8 +356,11 @@ export default function EditTemplate() {
         checksToSave,
       );
       const batch = writeBatch(db);
+      // An unrelated edit must preserve a bulk access change made in another tab.
+      const { templateAccess, ...otherFields } = formData;
+      const fields = templateAccess === originalAccess.current ? otherFields : formData;
       batch.update(doc(db, "mlmtemplate", id), {
-        ...formData, serial: Number(formData.serial) || 0, GraphicsLink: cleanGraphics, updatedAt: serverTimestamp(),
+        ...fields, serial: Number(formData.serial) || 0, GraphicsLink: cleanGraphics, updatedAt: serverTimestamp(),
       });
       const qualityRecord = {
         templateId: id,
@@ -383,7 +389,7 @@ export default function EditTemplate() {
       }
 
       await batch.commit();
-      rememberTemplateChange(id, { ...formData, serial: Number(formData.serial) || 0,
+      rememberTemplateChange(id, { ...fields, serial: Number(formData.serial) || 0,
         GraphicsLink: cleanGraphics, updatedAt: new Date() });
       rememberAdminRow(COLLECTIONS.TEMPLATEQUALITY, id, { ...qualityRecord, updatedAt: new Date() });
       if (subtypeRecord) rememberAdminRow(COLLECTIONS.TEMPLATEQUALITY, subtypeRecordId, { ...subtypeRecord, updatedAt: new Date() });
@@ -538,6 +544,7 @@ export default function EditTemplate() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <SelectField label="Main Type"   value={form.MainType}   onChange={handleMainTypeChange}   options={MAIN_TYPES}       placeholder="Select main type…" required />
                 <SelectField label="Select Type" value={form.SelectType} onChange={handleSelectTypeChange} options={selectTypeOptions} placeholder={form.MainType ? "Select type…" : "Choose Main Type first"} required disabled={!form.MainType} />
+                <SelectField label="Template access" value={form.templateAccess} onChange={handleText("templateAccess")} options={TEMPLATE_ACCESS} required />
               </div>
 
               <TextField label="Subtype" value={form.Subtype || ""} onChange={handleText("Subtype")} placeholder="e.g. Diwali, Gold Pack, Morning Series…" />
