@@ -168,3 +168,19 @@ test("R2 finalize validates remote parts, video size and bounded container heade
   headType = "text/html";
   await assert.rejects(() => store.finish(f));
 });
+
+test('archive is admin-only, terminal and non-destructive; restore retains state', () => {
+  const row = { status: 'Completed', mobile: '9876543210', rawDeleted: false, credit: 'consumed', link: 'https://drive.google.com/file/d/abcdefghijk/view' };
+  const change = V.transition(row, 'archive', {mobile:row.mobile}, 'admin', 123);
+  assert.deepEqual(change, {archived:true,archivedAt:123});
+  assert.throws(()=>V.transition(row,'archive',{mobile:row.mobile},'manager',123));
+  assert.throws(()=>V.transition({...row,status:'Editing'},'archive',{mobile:row.mobile},'admin',123));
+  assert.deepEqual(V.transition({...row,...change},'restore',{},'admin',124),{archived:false,restoredAt:124});
+  assert.throws(()=>V.transition({...row,...change,deleting:true},'restore',{},'admin',124));
+});
+test('raw preview accepts only bounded JPEG data, never a remote link or SVG',()=>{
+  const image='data:image/jpeg;base64,'+Buffer.from([255,216,255,217]).toString('base64');
+  assert.equal(V.thumbnail(image),image);
+  assert.equal(V.thumbnail(undefined),'');
+  for(const invalid of ['https://example.com/test.jpg','data:image/svg+xml;base64,AAAA','data:image/jpeg;base64,AAAA','data:image/jpeg;base64,'+'A'.repeat(12001)]) assert.throws(()=>V.thumbnail(invalid));
+});

@@ -164,3 +164,31 @@
 .ve .close {
   margin-left: auto;
 }
+
+/* Video service: mobile-first, existing app accent */
+.ve { --ve-blue:#2f80ea; --ve-line: #e0e7f0; padding:clamp(12px, 3vw, 24px); background:var(--background,#f7f9fc); overflow-wrap:anywhere; }
+.ve h1 {font-size:clamp(20px,4vw,28px); margin:0;}
+.ve header {margin-bottom:10px;}
+.ve section,.ve article {border-radius:16px; box-shadow:0 2px 10px #142e4710; padding:14px; min-width:0;}
+.ve button,.ve a.action {gap:6px; border-radius:10px; min-height:42px;}
+.ve .ve-credit {background:linear-gradient(120deg,#2f80ea,#185cb7); color:white; border:0;}
+.ve .ve-credit .metrics {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;}
+.ve .ve-credit .metrics>div {background:#ffffff22;min-width:0;padding:8px 5px;text-align:center;font-size:11px;}
+.ve .ve-credit .primary {background:white;color:#185cb7;width:100%;margin-top:12px;}
+.ve .ve-request-card {background:white;display:flex;gap:10px;padding:10px;text-align:left;align-items:center;min-width:0;}
+.ve .ve-thumb {display:grid;place-items:center;width:44px;height:44px;flex:none;background:#eaf3ff;color:#2f80ea;border-radius:10px;}
+.ve .ve-card-copy {flex:1;min-width:0;overflow-wrap:anywhere;}
+.ve .ve-card-end {display:grid;justify-items:end;gap:5px;flex:none;max-width:42%;}
+.ve .ve-card-end small {display:flex;align-items:center;}
+.ve .ve-status {font-size:10px;padding:4px 7px;border-radius:12px;background:#eaf3ff;color:#215da5;text-align:center;}
+.ve .ve-status[data-status="Completed"] {background:#e4f5e9;color:#247745;}
+.ve .ve-status[data-status="Cancelled"],.ve .ve-status[data-status="Rejected"] {background:#fbe8e8;color:#9a2929;}
+.ve .ve-upload-row {display:grid;gap:6px;padding:10px;margin:8px 0;}
+.ve .ve-progress progress {height:6px;display:block;}
+.ve .ve-preview iframe {width:100%;aspect-ratio:16/9;border:0;margin-top:8px;border-radius:10px;}
+.ve a.action {max-width:100%;}
+@media(max-width:480px){.ve section,.ve article {padding:10px}.ve .ve-thumb {width:36px;height:36px}.ve .ve-card-copy small {font-size:10px}.ve header select {max-width:100%;}.ve .metrics>div {min-width:0;}}
+
+.ve-team-cards{display:none}.ve-team-card{display:flex;gap:10px;align-items:center}.ve-team-card .ve-card-copy{min-width:0}.ve-team-card button{font-size:12px}@media(max-width:767px){.ve-team-cards{display:grid;gap:6px}.ve-team-table{display:none}}
+
+.ve-thumb img,.ve-table-thumb{width:64px;height:45px;object-fit:cover;border-radius:7px}.ve-table-thumb{display:block;margin:5px 0}.ve-team-card .ve-thumb{width:64px;height:45px;overflow:hidden}

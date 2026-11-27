@@ -417,6 +417,26 @@
       "fieldPath": "expiresAt",
       "ttl": true,
       "indexes": []
+    },
+    {
+      "collectionGroup": "requests",
+      "fieldPath": "thumbnail",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "drafts",
+      "fieldPath": "thumbnail",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "entries",
+      "fieldPath": "thumbnail",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "updates",
+      "fieldPath": "thumbnail",
+      "indexes": []
     }
   ]
 }

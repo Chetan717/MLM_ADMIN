@@ -92,7 +92,7 @@ The earlier mixed deployment log contains successful updates and failed updates.
 
 1. Publish the Admin and customer production builds to their respective existing hosting sites. Keep the customer and Admin host mappings separate. Keep the Admin website's SPA rewrite to `index.html` so a direct visit to `/video-team` works.
 2. In **Admin → App Plans**, set numeric video credits on each Video Editing Service or Combo plan you intend to sell. The existing payment system produces a distinct video grant for these purchases. Poster-only, generic premium status, scheduled or expired grants, and legacy grants with no numeric allowance cannot authorize a new request.
-3. In **Admin → Video Editing Service → Team accounts**, create a manager or editor with an unused email address. The team member opens the team login page and chooses **Reset password** to set a private password through Firebase email. A Master Admin may manage managers and editors. A manager may manage editors. Deactivation blocks subsequent service requests.
+3. In **Admin → Video Editing Service → Team accounts**, create a manager or editor with an unused email address. Enter a strong password and confirmation, and select active status. The team member can sign in with email and password; **Reset password** remains available through Firebase email. A Master Admin may manage managers and editors. A manager may manage editors. Deactivation blocks subsequent service requests.
 4. Configure the real support number. Verify that the team login and the customer app point to the same Firebase project, payment mode and Functions region.
 
 ## 5. Acceptance check with a staging account
@@ -104,7 +104,7 @@ Use a video or combo grant with one available credit. Try a poster-only account 
 3. Assign an editor. Check that another editor cannot retrieve the request or request a raw file URL. Download the clips and confirm the download manually. Start editing and submit a Drive file link shared with the intended customer.
 4. Open the review link and confirm review of that version. Submit a correction. Repeat until the third free correction. The app should disable further correction requests, keep the request open and offer support once configured.
 5. Approve the latest reviewed edit. Verify exactly one consumed credit and zero remaining reserved for this request. Refresh and repeat approval to verify the balance stays stable. Open the final video and test a WhatsApp link on mobile and desktop. The sender must press Send.
-6. After approval, delete the raw clips manually. Verify the final Drive link, correction history, credit history and analytics. Archive a terminal request only after typing the customer's exact registered mobile number.
+6. After approval, delete the raw clips manually. Verify the final Drive link, correction history, credit history and analytics. A Master Admin may archive a terminal request before or after manual raw deletion, after typing the customer's exact registered mobile number. Archiving preserves files and customer delivery access. Restore or permanently delete from Archived requests. External Drive files are not deleted by the app.
 
 ## Data, access and retention
 
@@ -143,6 +143,6 @@ firebase emulators:exec --only firestore --project demo-mlmlive-video --config f
 | Admin frontend and tests | `src/Pages/Video/VideoTeam.jsx`, `src/Pages/Video/Video.css`, `tests/videoEditing.test.mjs`, `tests/videoEditing.integration.mjs`, `tests/videoEditing.rules.integration.mjs` | `src/App.jsx`, `src/components/Sidebar.jsx`, `src/Utils/adminPageState.js`, `tests/adminPageState.test.mjs` |
 | Customer web app | `src/pages/Video/VideoService.jsx`, `src/pages/Video/NewRequest.jsx`, `src/pages/Video/uploads.js`, `src/pages/Video/Video.css` | `src/App.jsx`, `src/components/Sidebar.jsx`, `src/pages/Subscription/MainSubscription.jsx` |
 
-Both ZIPs include this guide. The Admin archive also includes the rebuilt Admin frontend and new backend SDK dependencies. The customer archive retains its existing source-build packaging.
+Both updated ZIPs are source-only; rebuild both frontends and reinstall dependencies before deploying. Read VIDEO_SERVICE_UPDATE_AND_DEPLOY.md for the current changes and remaining verification.
 
 [Cloudflare R2 presigned URLs](https://developers.cloudflare.com/r2/api/s3/presigned-urls/) · [Cloudflare multipart uploads](https://developers.cloudflare.com/r2/objects/upload-objects/) · [Firebase targeted deployment](https://firebase.google.com/docs/functions/manage-functions)

@@ -138,7 +138,8 @@ const emptyFilters = {
   filter: "",
   value: "",
   editor: "",
-  size: 20,
+  size: 10,
+  archived: false,
   from: "",
   to: "",
   sort: "created",
@@ -155,6 +156,8 @@ function Panel({ admin }) {
   const [info, summary] = useState(null),
     [rows, setRows] = useState([]),
     [cursor, page] = useState(null),
+    [cachedPages, setCachedPages] = useState([]),
+    [pageIndex, setPageIndex] = useState(0),
     [filters, filter] = useState(emptyFilters),
     [applied, apply] = useState(emptyFilters);
   const [detail, setDetail] = useState(null),
@@ -166,12 +169,14 @@ function Panel({ admin }) {
     [note, setNote] = useState(""),
     [link, setLink] = useState("");
   const [settings, setSettings] = useState(null);
+  const [migrationCursor, setMigrationCursor] = useState(null);
   const [person, setPerson] = useState({
       name: "",
       email: "",
       mobile: "",
-      role: "editor",
+      role: "editor", password: "", confirmPassword: "", active: true,
     }),
+    [showPassword, setShowPassword] = useState(false),
     [msg, say] = useState(""),
     [error, err] = useState(""),
     [busy, blocking] = useState(false);
@@ -207,7 +212,12 @@ function Panel({ admin }) {
     members((v) => (next ? [...v, ...res.rows] : res.rows));
     moreTeam(res.cursor);
   }
+  function showPage(i, pages = cachedPages) {
+    if (!pages[i]) return;
+    setPageIndex(i); setRows(pages[i].rows); page(pages[i].cursor);
+  }
   async function list(f, more = false) {
+    if (more && cachedPages[pageIndex+1]) { showPage(pageIndex+1); return; }
     const res = await call("list", {
       ...f,
       ...bounds(f),
@@ -215,11 +225,16 @@ function Panel({ admin }) {
       to: bounds(f).to ?? null,
       cursor: more ? cursor : null,
     });
-    setRows((old) => (more ? [...old, ...res.rows] : res.rows));
-    page(res.cursor);
+    const seen = new Set(more ? cachedPages.flatMap(p=>p.rows.map(r=>r.id)) : []);
+    const result = {rows:res.rows.filter(r=>!seen.has(r.id)), cursor:res.cursor};
+    if(more && !result.rows.length && !result.cursor) {
+      const pages=cachedPages.map((p,i)=>i===pageIndex?{...p,cursor:null}:p);setCachedPages(pages);page(null);return;
+    }
+    const pages = more ? [...cachedPages,result] : [result];
+    setCachedPages(pages);showPage(more?pageIndex+1:0,pages);
   }
   async function refresh(f = applied) {
-    const args = { ...bounds(f), editor: f.editor };
+    const args = { ...bounds(f), editor: f.editor, archived: f.archived };
     const [s] = await Promise.all([call("dashboard", args), list(f)]);
     summary(s);
     setSettings({
@@ -270,12 +285,14 @@ function Panel({ admin }) {
   async function account(e) {
     e.preventDefault();
     await work(async () => {
-      await call("manage", person);
+      if (person.password !== person.confirmPassword) throw Error("Passwords do not match.");
+      const { confirmPassword, ...data } = person;
+      await call("manage", data);
       await teamPage();
       say(
-        "Account created. The team member can set a password using Reset password on the team login page.",
+        "Account created. The team member can sign in using their email and password.",
       );
-      setPerson({ name: "", mobile: "", email: "", role: "editor" });
+      setPerson({ name: "", mobile: "", email: "", role: "editor", password: "", confirmPassword: "", active: true });
     });
   }
   return (
@@ -323,10 +340,12 @@ function Panel({ admin }) {
               onClick={() => {
                 setTab("requests");
                 setDetail(null);
+                if (applied.archived) { const f={...emptyFilters}; filter(f); work(()=>refresh(f)); }
               }}
             >
               Requests
             </button>
+            {info.role === "admin" && <button disabled={busy} onClick={()=>{setTab("requests");setDetail(null);const f={...emptyFilters,archived:true};filter(f);work(()=>refresh(f));}}>Archived requests</button>}
             {manager && (
               <button
                 onClick={() => {
@@ -420,6 +439,9 @@ function Panel({ admin }) {
                       />
                     </label>
                   ))}
+                  {["password", "confirmPassword"].map(k=><label key={k}>{k === "password" ? "Password" : "Confirm password"}<input required minLength={8} maxLength={128} autoComplete="new-password" type={showPassword ? "text" : "password"} value={person[k]} onChange={e=>setPerson({...person,[k]:e.target.value})}/></label>)}
+                  <button type="button" onClick={()=>setShowPassword(!showPassword)}>{showPassword ? "Hide passwords" : "Show passwords"}</button>
+                  <label><input type="checkbox" checked={person.active} onChange={e=>setPerson({...person,active:e.target.checked})}/> Active account</label>
                   <label>
                     Role{" "}
                     <SearchableSelect
@@ -463,6 +485,7 @@ function Panel({ admin }) {
                         {m.active ? "Deactivate" : "Activate"}
                       </button>
                     )}
+                    {(m.role === "editor" || info.role === "admin") && <button disabled={busy || !m.active} onClick={()=>work(async()=>{await sendPasswordResetEmail(teamAuth,m.email);say("Password reset email requested.");})}>Reset password</button>}
                     {m.role === "editor" && (
                       <button
                         disabled={busy}
@@ -564,7 +587,8 @@ function Panel({ admin }) {
                   Open edited version {r.version}
                 </a>
               )}
-              <fieldset disabled={busy}>
+              {r.archived && <article><h3>Archived request</h3><p>Files are retained until permanent deletion. External Google Drive files are not deleted by this app.</p><div className="actions"><button disabled={busy || r.deleting} onClick={()=>work(async()=>{await command("restore");setDetail(null);await refresh();})}>Restore request</button><button disabled={busy} onClick={()=>{const mobile=prompt("Enter the registered mobile number to permanently delete this request and its R2 originals. Google Drive files remain external.");if(mobile && confirm("This cannot be undone. Permanently delete?"))work(async()=>{await call("permanentDelete",{id:r.id,mobile,confirmed:true});setDetail(null);await refresh();});}}>Permanently delete</button></div></article>}
+              <fieldset disabled={busy || r.archived || r.rawCleanupPending}>
                 <legend>Raw clips</legend>
                 {r.rawDeleted ? (
                   <p>Raw videos deleted · {fmt(r.rawDeletedAt)}</p>
@@ -625,7 +649,7 @@ function Panel({ admin }) {
                   </button>
                 )}
               </fieldset>
-              <fieldset disabled={busy}>
+              <fieldset disabled={busy || r.archived}>
                 <legend>Request actions</legend>
                 <div className="actions">
                   {manager &&
@@ -717,7 +741,7 @@ function Panel({ admin }) {
                     Recover delivery link
                   </button>
                 )}
-                {r.status === "Completed" && !r.rawDeleted && (
+                {r.status === "Completed" && !r.rawDeleted && !r.archived && (
                   <button
                     onClick={() => {
                       if (
@@ -759,7 +783,7 @@ function Panel({ admin }) {
                           : "Reject request"}
                       </button>
                     ))
-                  ) : (
+                  ) : info.role === "admin" && !r.archived ? (
                     <button
                       onClick={() => {
                         const mobile = prompt(
@@ -775,7 +799,7 @@ function Panel({ admin }) {
                     >
                       Archive request
                     </button>
-                  ))}
+                  ) : null)}
               </fieldset>
               <h3>Request and credit history</h3>
               <ol>
@@ -821,7 +845,8 @@ function Panel({ admin }) {
           ) : (
             <>
               <section>
-                <h2>Service overview</h2>
+                <h2>{applied.archived ? "Archived requests" : "Service overview"}</h2>
+                {applied.archived && <button disabled={busy} onClick={()=>work(async()=>{const result=await call("reindexArchived",{cursor:migrationCursor});setMigrationCursor(result.cursor);await refresh();say(result.migrated+" old archives indexed."+(result.cursor?" Click again for next batch.":" Archive scan complete."));})}>{migrationCursor?"Index next 10 old archives":"Index older archived requests"}</button>}
                 <div className="metrics">
                   <div>
                     <b>{info.stats.total || 0}</b>Total requests
@@ -990,16 +1015,6 @@ function Panel({ admin }) {
                       <option value="created">Newest submitted</option>
                       <option value="updated">Recently updated</option>
                     </SearchableSelect>
-                    <SearchableSelect
-                      sortOrder="original"
-                      aria-label="Page size"
-                      value={filters.size}
-                      onChange={(e) => patch("size", Number(e.target.value))}
-                    >
-                      {[10, 20, 50].map((n) => (
-                        <option key={n}>{n}</option>
-                      ))}
-                    </SearchableSelect>
                     <button
                       disabled={!!filters.filter && !filters.value}
                       onClick={() => work(() => refresh(filters))}
@@ -1027,7 +1042,8 @@ function Panel({ admin }) {
                     </button>
                   </div>
                 )}
-                <div className="wrap">
+                <div className="ve-team-cards">{rows.map(row=><article key={row.id} className="ve-team-card"><div className="ve-thumb">{row.thumbnail?<img loading="lazy" src={row.thumbnail} alt="Raw clip preview"/>:"▶"}</div><div className="ve-card-copy"><strong>{row.category}</strong><p>{row.name} · {row.editorName || "Unassigned"}</p><small>{row.id} · {fmt(row.created)}</small></div><div className="ve-card-end"><b className="ve-status" data-status={row.status}>{row.status}</b><button disabled={busy} onClick={()=>work(()=>open(row.id))}>Details</button></div></article>)}</div>
+                <div className="wrap ve-team-table">
                   <table>
                     <thead>
                       <tr>
@@ -1071,6 +1087,7 @@ function Panel({ admin }) {
                               {row.id}
                             </button>
                             <br />
+                            {row.thumbnail && <img loading="lazy" src={row.thumbnail} alt="Raw clip preview" className="ve-table-thumb"/>}
                             {row.category} · {row.fileCount} clips
                             <br />
                             {fmt(row.created)}
@@ -1101,14 +1118,7 @@ function Panel({ admin }) {
                   </table>
                 </div>
                 {!rows.length && <p>No requests match this view.</p>}
-                {cursor && (
-                  <button
-                    disabled={busy}
-                    onClick={() => work(() => list(applied, true))}
-                  >
-                    Load more requests
-                  </button>
-                )}
+                <div className="actions ve-pagination"><button disabled={busy || pageIndex===0} onClick={()=>showPage(pageIndex-1)}>Previous</button><small>Page {pageIndex+1}</small><button disabled={busy || (!cursor && !cachedPages[pageIndex+1])} onClick={()=>work(()=>list(applied,true))}>Next</button></div>
               </section>
             </>
           )}

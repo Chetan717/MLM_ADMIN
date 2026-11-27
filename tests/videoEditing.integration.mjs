@@ -185,10 +185,16 @@ test("Customer, assigned editor and master admin complete and settle one request
       id,
     );
     await assert.rejects(() => call(owner, "archive", { id, mobile: "wrong" }));
+    await call(owner, "archive", { id, mobile });
+    assert.equal(objects.size, 1, "archive must retain original files");
+    assert.equal((await call(owner, "list", {archived:true})).rows[0].id,id);
+    assert.equal((await call(own, "list")).rows[0].id,id, "customer retains delivery access");
+    await assert.rejects(()=>call(editor,"list",{archived:true}));
+    await call(owner,"restore",{id});
     await media(editor, "deleteRaw", { id, confirmed: true });
     assert.equal(objects.size, 0);
     await call(owner, "archive", { id, mobile });
-    assert.equal((await call(own, "list")).rows.length, 0);
+    assert.equal((await call(own, "list")).rows[0].id,id);
     await db
       .collection("_videoEditingTeam")
       .doc(editor.uid)
@@ -206,6 +212,7 @@ test("Customer, assigned editor and master admin complete and settle one request
     await media(own, "finish", { id: second, index: 0 });
     await call(own, "submit", { id: second });
     await call(own, "cancel", { id: second, note: "No longer required" });
+    assert.equal(objects.size,0,"cancel automatically removes raw clips");
     const released = (await er.get()).data().grants[0];
     assert.equal(released.remainingCredits, 1);
     assert.equal(released.reservedVideoCredits, 0);
@@ -215,6 +222,11 @@ test("Customer, assigned editor and master admin complete and settle one request
       sort: "updated",
     });
     assert.equal(next.rows[0].id, second);
+    await call(owner,"archive",{id:second,mobile});
+    await assert.rejects(()=>call(own,"permanentDelete",{id:second,mobile,confirmed:true}));
+    await call(owner,"permanentDelete",{id:second,mobile,confirmed:true});
+    await assert.rejects(()=>call(owner,"details",{id:second}));
+    assert.equal((await er.get()).data().grants[0].remainingCredits,1);
     // Distinct entries and a tie-breaker exercise cursor paging at real page boundaries.
     const feed = db
       .collection("videoService")

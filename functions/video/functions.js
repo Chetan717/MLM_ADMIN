@@ -1,5 +1,5 @@
 "use strict";
-const { randomUUID, randomBytes } = require("node:crypto");
+const { randomUUID } = require("node:crypto");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { defineSecret } = require("firebase-functions/params");
@@ -67,8 +67,8 @@ module.exports = function videoFunctions({
   const teams = () => db.collection("_videoEditingTeam");
   const requestRef = (id) => root().collection("requests").doc(key(id));
   const draftRef = (uid) => root().collection("drafts").doc(D.hash(uid));
-  const feed = (scope, sort) =>
-    root()
+  const feed = (scope, sort, m = modeId()) =>
+    root(m)
       .collection("views")
       .doc(scope)
       .collection(sort === "updated" ? "updates" : "entries");
@@ -112,9 +112,9 @@ module.exports = function videoFunctions({
       "permission-denied",
     );
   }
-  function projections(tx, r, old) {
-    const scopes = ["team", "u-" + D.hash(r.uid)];
-    if (r.editor) scopes.push("e-" + r.editor);
+  function projections(tx, r, old, m = modeId()) {
+    const scopes = ["u-" + D.hash(r.uid), r.archived ? "archived" : "team"];
+    if (r.editor && !r.archived) scopes.push("e-" + r.editor);
     const row = {
       id: r.id,
       name: r.name,
@@ -128,6 +128,9 @@ module.exports = function videoFunctions({
       editorName: r.editorName || "",
       rounds: r.rounds,
       rawDeleted: r.rawDeleted,
+      thumbnail: r.thumbnail || "",
+      duration: r.duration || 0,
+      archived: r.archived === true,
       version: r.version,
       fileCount: r.files.length,
       metrics: metrics(r),
@@ -151,7 +154,7 @@ module.exports = function videoFunctions({
         }),
       ),
     ];
-    const previousScopes = old
+    const previousScopes = old?.archived && old.archiveIndexed ? ["archived", "u-" + D.hash(old.uid)] : old
       ? [
           "team",
           "u-" + D.hash(old.uid),
@@ -174,7 +177,7 @@ module.exports = function videoFunctions({
         const delta = (after[k] || 0) - (before[k] || 0);
         if (delta) changes[k] = FieldValue.increment(delta);
       }
-      const view = feed(scope).parent;
+      const view = feed(scope, "created", m).parent;
       if (Object.keys(changes).length) {
         tx.set(view, changes, { merge: true });
         tx.set(
@@ -188,20 +191,21 @@ module.exports = function videoFunctions({
       if (
         old &&
         previousScopes.includes(scope) &&
-        (!nextScopes.includes(scope) || r.archived || old.updated !== r.updated)
+        (!nextScopes.includes(scope) || old.updated !== r.updated)
       )
-        tx.delete(feed(scope, "updated").doc(updateKey(old)));
-      if (nextScopes.includes(scope) && !r.archived) {
-        tx.set(feed(scope).doc(r.id), { ...row, tags });
-        tx.set(feed(scope, "updated").doc(updateKey(r)), { ...row, tags });
-      } else tx.delete(feed(scope).doc(r.id));
+        tx.delete(feed(scope, "updated", m).doc(updateKey(old)));
+      if (nextScopes.includes(scope)) {
+        tx.set(feed(scope, "created", m).doc(r.id), { ...row, tags });
+        tx.set(feed(scope, "updated", m).doc(updateKey(r)), { ...row, tags });
+      } else tx.delete(feed(scope, "created", m).doc(r.id));
     }
   }
   function save(tx, ref, r, change, a, action, old = r) {
     const time = Date.now(),
       next = { ...r, ...change, updated: time };
+    if (next.archived) next.archiveIndexed = true;
     tx.set(ref, next);
-    projections(tx, next, old);
+    projections(tx, next, old, ref.parent.parent.id);
     const detail = {};
     for (const k of [
       "status",
@@ -214,7 +218,11 @@ module.exports = function videoFunctions({
       "credit",
       "editorName",
       "rawDeleted",
+      "rawCleanupPending",
       "archived",
+      "archivedBy",
+      "archivedAt",
+      "restoredAt",
       "reviewedVersion",
     ])
       if (k in change) detail[k] = change[k];
@@ -322,6 +330,10 @@ module.exports = function videoFunctions({
     return out;
   }
   function scopeFor(a, d) {
+    if (d.archived === true) {
+      V.check(a.role === "admin", "Admin required.", "permission-denied");
+      return "archived";
+    }
     if (a.role === "customer") return "u-" + D.hash(a.uid);
     if (a.role === "editor") return "e-" + a.uid;
     return d.editor ? "e-" + key(d.editor) : "team";
@@ -374,18 +386,20 @@ module.exports = function videoFunctions({
     }
     query = range(query, d).orderBy(idField);
     if (d.cursor) query = query.startAfter(key(d.cursor));
-    const size = [10, 20, 50].includes(d.size) ? d.size : 20;
-    const snap = await query.limit(size + 1).get();
-    const rows = snap.docs.slice(0, size).map((doc) => {
+    const size = 10;
+    const snap = await query.limit(size).get();
+    const rows = snap.docs.map((doc) => {
       const { tags, metrics, ...row } = doc.data();
       return row;
     });
-    return { rows, cursor: snap.size > size ? snap.docs[size - 1].id : null };
+    return { rows, cursor: snap.size === size ? snap.docs[size - 1].id : null };
   }
   async function details(a, d) {
     const ref = requestRef(d.id),
       r = (await ref.get()).data();
     allow(a, r);
+    V.check(!r.deleting || a.role === "admin", "Request is being deleted.", "permission-denied");
+    V.check(!r.archived || ["admin", "customer"].includes(a.role), "Request is archived.", "permission-denied");
     let query = ref
       .collection("history")
       .orderBy("time", "desc")
@@ -418,6 +432,8 @@ module.exports = function videoFunctions({
       token = key(d.token),
       ref = draftRef(a.uid);
 
+    const thumbnail = V.thumbnail(d.thumbnail);
+    const duration = typeof d.duration === "number" && Number.isFinite(d.duration) && d.duration > 0 && d.duration < 86400 ? Math.round(d.duration) : 0;
     const instructions = V.line(d.instructions, 5000),
       other = V.line(d.other || "", 100, false);
     const ctx = await service.account(a);
@@ -500,6 +516,8 @@ module.exports = function videoFunctions({
         company,
         state,
         category: d.category,
+        thumbnail,
+        duration,
         other,
         instructions,
         files,
@@ -588,7 +606,7 @@ module.exports = function videoFunctions({
         );
         return { id: r.id };
       }
-      V.check(!r.archived, "Request is archived.");
+      V.check(!r.deleting && (!r.archived || d.action === "restore"), "Request is archived or being deleted.");
       if (d.action === "assign") {
         V.check(
           ["admin", "manager"].includes(a.role),
@@ -603,6 +621,8 @@ module.exports = function videoFunctions({
         d = { ...d, editorName: member.name };
       }
       const change = V.transition(r, d.action, d, a.role, Date.now());
+      if (d.action === "archive") change.archivedBy = a.uid;
+      if (d.action === "cancel" && !r.rawDeleted) change.rawCleanupPending = true;
       if (change.credit) {
         const er = service.entitlementRef(r.uid),
           snap = await tx.get(er);
@@ -670,6 +690,8 @@ module.exports = function videoFunctions({
       "Invalid team role.",
       "permission-denied",
     );
+    V.check(typeof d.password === "string" && d.password.length >= 8 && d.password.length <= 128 && /[a-z]/.test(d.password) && /[A-Z]/.test(d.password) && /[0-9]/.test(d.password), "Use 8–128 characters with upper/lowercase letters and a number.", "invalid-argument");
+    V.check(typeof d.active === "boolean", "Choose account status.", "invalid-argument");
     const uid = "ve_" + D.hash(email).slice(0, 40),
       ref = teams().doc(uid);
     // Never attach privileges to an existing unrelated email account.
@@ -678,11 +700,13 @@ module.exports = function videoFunctions({
         uid,
         email,
         displayName: name,
-        password: randomBytes(36).toString("base64url"),
+        password: d.password,
         disabled: true,
       });
     } catch (e) {
       if (e.code !== "auth/uid-already-exists") throw e;
+      const existing = await auth.getUser(uid);
+      V.check(existing.email === email && existing.disabled, "Team account already exists.");
     }
     await db.runTransaction(async (tx) => {
       const row = (await tx.get(ref)).data();
@@ -702,8 +726,8 @@ module.exports = function videoFunctions({
       });
     });
     await auth.setCustomUserClaims(uid, { panel: "video-team" });
-    await auth.updateUser(uid, { disabled: false });
-    await ref.update({ active: true, provisioning: false });
+    await auth.updateUser(uid, { password: d.password, disabled: !d.active });
+    await ref.update({ active: d.active, provisioning: false });
     return { uid, email };
   }
   async function files(q, a, d) {
@@ -718,7 +742,7 @@ module.exports = function videoFunctions({
         "permission-denied",
       );
       if (d.action === "downloadAll") {
-        V.check(!r.rawDeleted && !r.archived, "Raw files unavailable.");
+        V.check(!r.rawDeleted && !r.archived && !r.rawCleanupPending && !r.deleting, "Raw files unavailable.");
         return {
           urls: await Promise.all(r.files.map((f) => store.download(f, true))),
         };
@@ -726,7 +750,7 @@ module.exports = function videoFunctions({
       if (d.action === "download") {
         const f = r.files[d.index];
         V.check(
-          !r.rawDeleted && !r.archived && Number.isInteger(d.index) && f,
+          !r.rawDeleted && !r.archived && !r.rawCleanupPending && !r.deleting && Number.isInteger(d.index) && f,
           "Raw file unavailable.",
         );
         return { url: await store.download(f, d.attachment === true) };
@@ -738,25 +762,8 @@ module.exports = function videoFunctions({
           d.confirmed === true,
         "Final customer approval and deletion confirmation are required.",
       );
-      if (!r.rawDeleted) {
-        await Promise.all(r.files.map((f) => store.remove(f)));
-        await db.runTransaction(async (tx) => {
-          const current = (await tx.get(rr)).data();
-          if (!current.rawDeleted)
-            save(
-              tx,
-              rr,
-              current,
-              {
-                rawDeleted: true,
-                rawDeletedAt: Date.now(),
-                rawDeletedBy: a.uid,
-              },
-              a,
-              "deleteRaw",
-            );
-        });
-      }
+      V.check(!r.archived && !r.deleting, "Request unavailable.");
+      await cleanRequestRaw(rr, store, a, "deleteRaw");
       return {};
     }
     V.check(
@@ -826,6 +833,71 @@ module.exports = function videoFunctions({
       await update((old) => ({ ...old, ready: true }));
     }
     return {};
+  }
+  async function cleanRequestRaw(ref, store, a, action) {
+    const r = (await ref.get()).data();
+    if (!r || r.rawDeleted || r.deleting) return;
+    V.check(r.status === "Cancelled" || (r.status === "Completed" && r.approvedAt && r.credit === "consumed"), "Raw cleanup is not permitted.");
+    for (const f of r.files) { await store.abort(f); await store.remove(f); }
+    await db.runTransaction(async tx => {
+      const live = (await tx.get(ref)).data();
+      if (!live || live.rawDeleted || live.deleting) return;
+      // Keep a minimal clip manifest for audit, not storage credentials or keys.
+      save(tx, ref, live, { files: live.files.map(({name,size,type})=>({name,size,type})), rawDeleted: true, thumbnail: "", rawCleanupPending: false, rawDeletedAt: Date.now(), rawDeletedBy: a.uid }, a, action);
+    });
+  }
+  async function permanentlyDelete(a,d) {
+    V.check(a.role === "admin" && d.confirmed === true, "Admin deletion confirmation required.", "permission-denied");
+    const ref = requestRef(d.id);
+    const r = await db.runTransaction(async tx => {
+      const row = (await tx.get(ref)).data();
+      if (!row) return null;
+      V.check(row.archived && ["Completed","Cancelled","Rejected"].includes(row.status) && d.mobile === row.mobile, "Archive a terminal request and confirm customer mobile first.");
+      tx.update(ref, { deleting: true });
+      return row;
+    });
+    if (!r) return {};
+    // Final videos are externally owned Google Drive links; never delete an external file by URL.
+    if (!r.rawDeleted) { const store = privateStore(); for (const f of r.files) { await store.abort(f); await store.remove(f); } }
+    const audit = root().collection("deletionAudit").doc(r.id);
+    await audit.set({id:r.id,uid:r.uid,credit:r.credit,purchaseId:r.purchaseId,status:r.status,actor:a.uid,time:Date.now(),externalDriveLinkRetained:!!r.link},{merge:true});
+    // Keep the request in the archive until cleanup is complete so admins can retry safely.
+    for (const child of await ref.listCollections()) await db.recursiveDelete(child);
+    await db.runTransaction(async tx => {
+      const live = (await tx.get(ref)).data();
+      if (!live) return;
+      const values = {total:1,...metrics(live)};
+      const delta = Object.fromEntries(Object.entries(values).map(([k,v])=>[k,FieldValue.increment(-v)]));
+      const scopes = live.archiveIndexed ? ["archived", "u-" + D.hash(live.uid)] : ["team", "u-" + D.hash(live.uid), ...(live.editor ? ["e-" + live.editor] : [])];
+      for (const scope of scopes) {
+        const view = feed(scope).parent;
+        tx.set(view,delta,{merge:true});
+        tx.set(view.collection("days").doc(new Date(live.created+19800000).toISOString().slice(0,10)),delta,{merge:true});
+        tx.delete(feed(scope).doc(live.id));
+        tx.delete(feed(scope,"updated").doc(updateKey(live)));
+      }
+      tx.delete(ref);
+    });
+    return {};
+  }
+  async function reindexArchived(a,d) {
+    V.check(a.role === "admin", "Admin required.", "permission-denied");
+    let q = root().collection("requests").where("archived","==",true).orderBy(idField);
+    if(d.cursor) q=q.startAfter(key(d.cursor));
+    const snap = await q.limit(10).get();
+    let migrated=0;
+    for (const doc of snap.docs) {
+      const changed=await db.runTransaction(async tx=>{
+        const row=(await tx.get(doc.ref)).data();
+        if(!row || !row.archived || row.archiveIndexed || row.deleting) return false;
+        const next={...row,archiveIndexed:true};
+        projections(tx,next,row);
+        tx.update(doc.ref,{archiveIndexed:true});
+        return true;
+      });
+      if(changed) migrated++;
+    }
+    return {migrated,cursor:snap.size===10?snap.docs.at(-1).id:null};
   }
   async function cleanup(ref, store, expected) {
     const row = await db.runTransaction(async (tx) => {
@@ -897,10 +969,19 @@ module.exports = function videoFunctions({
           return members(a, d);
         case "manage":
           return manage(a, d);
+        case "reindexArchived":
+          return reindexArchived(a,d);
+        case "permanentDelete":
+          return permanentlyDelete(a,d);
+        case "cancel": {
+          const result = await mutate(q,d);
+          try { await cleanRequestRaw(requestRef(d.id),privateStore(),a,"cancelRawCleanup"); } catch(e) { console.error("Raw cancellation cleanup deferred", {code:e.code||e.name}); }
+          return result;
+        }
         default:
           return mutate(q, d);
       }
-    }),
+    }, { secrets }),
     videoEditingMedia: call(files, { secrets }),
     videoEditingDraftCleanup: onSchedule(
       {
@@ -913,6 +994,10 @@ module.exports = function videoFunctions({
       async () => {
         const store = privateStore();
         for (const m of ["test", "live"]) {
+          const pending = await root(m).collection("requests").where("rawCleanupPending","==",true).limit(60).get();
+          for (const doc of pending.docs) {
+            try { await cleanRequestRaw(doc.ref,store,{uid:"system",role:"admin"},"cancelRawCleanup"); } catch(e) { console.error("Raw cleanup retry failed", {code:e.code||e.name}); }
+          }
           const snap = await root(m)
             .collection("drafts")
             .where("expires", "<=", Date.now())

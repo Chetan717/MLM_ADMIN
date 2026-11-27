@@ -138,6 +138,14 @@ function credit(ledger, action, time, purchaseId) {
     purchaseId: g.purchaseId,
   };
 }
+// Small private raw-preview asset; never accept arbitrary HTML or remote URLs.
+function thumbnail(value) {
+  if (value == null || value === "") return "";
+  check(typeof value === "string" && value.length <= 12000 && /^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(value), "Invalid video thumbnail.", "invalid-argument");
+  const bytes = Buffer.from(value.split(",")[1],"base64");
+  check(bytes.length >= 4 && bytes[0]===255 && bytes[1]===216 && bytes.at(-2)===255 && bytes.at(-1)===217, "Invalid JPEG thumbnail.", "invalid-argument");
+  return value;
+}
 function manifest(files) {
   check(
     Array.isArray(files) && files.length >= 1 && files.length <= 5,
@@ -265,18 +273,18 @@ function transition(r, action, d, role, time) {
       reviewedVersion: 0,
     };
   }
+  if (action === "restore") {
+    check(role === "admin" && r.archived && !r.deleting, "Archived request required.", "permission-denied");
+    return { archived: false, restoredAt: time };
+  }
   if (action === "archive") {
     check(
-      manager && d.mobile === r.mobile,
+      role === "admin" && d.mobile === r.mobile,
       "Enter the customer's exact registered mobile number.",
       "permission-denied",
     );
     states("Completed", "Cancelled", "Rejected");
-    check(
-      r.status !== "Completed" || r.rawDeleted,
-      "Delete the approved raw videos before archiving.",
-    );
-    return { archived: true };
+    return { archived: true, archivedAt: time };
   }
   D.fail("invalid-argument", "Unknown video request action.");
 }
@@ -288,6 +296,7 @@ module.exports = {
   credit,
   transition,
   manifest,
+  thumbnail,
   categories,
   statuses,
   formats,
