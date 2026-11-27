@@ -57,11 +57,44 @@ function whats(r, what) {
     )
   );
 }
+const ICONS = {
+  film: 'M3 8h18v12H3z M3 8l-1-4 18-3 1 4z M7 3l3 4 M14 2l3 4 M10 12l5 3-5 3z',
+  home: 'M3 10l9-7 9 7v11h-6v-7H9v7H3z',
+  list: 'M8 4h12v17H4V4h4 M8 3h8v4H8z M8 11h8 M8 15h8',
+  play: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20 M10 8l6 4-6 4z',
+  check: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20 M7 12l3 3 7-7',
+  repeat: 'M20 7H5l4-4 M5 7l4 4 M4 17h15l-4-4 M19 17l-4 4',
+  archive: 'M3 3h18v5H3z M5 8v13h14V8 M10 12h4',
+  users: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M4 21v-2a6 6 0 0 1 6-5h4a6 6 0 0 1 6 5v2',
+  settings: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8 M12 2v3 M12 19v3 M2 12h3 M19 12h3 M5 5l2 2 M17 17l2 2 M5 19l2-2 M17 7l2-2',
+  menu: 'M3 6h18 M3 12h18 M3 18h18',
+  arrow: 'M20 12H4 M4 12l7-7 M4 12l7 7',
+  refresh: 'M20 11a8 8 0 1 0-2 6 M20 4v7h-7',
+  mail: 'M3 5h18v14H3z M3 6l9 7 9-7',
+  lock: 'M5 10h14v11H5z M8 10V7a4 4 0 0 1 8 0v3',
+  calendar: 'M3 5h18v16H3z M7 2v6 M17 2v6 M3 10h18',
+  chat: 'M21 11a9 9 0 0 1-9 9H4l2-5a9 9 0 1 1 15-4z M8 11h8 M8 15h5',
+  exit: 'M10 4H4v16h6 M9 12h12 M17 8l4 4-4 4',
+};
+function Glyph({ name, size = 20 }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={ICONS[name] || ICONS.film}/></svg>;
+}
+function Brand() { return <span className="vt-brand"><span className="vt-brand-icon"><Glyph name="play" size={25}/></span>MLM LIVE</span>; }
+function Status({ value }) { return <span className="ve-status" data-status={value}>{value}</span>; }
+function Thumb({ row }) { const duration = Number(row.duration); return <span className="vt-thumb">{row.thumbnail ? <img loading="lazy" src={row.thumbnail} alt="Raw clip thumbnail"/> : <Glyph name="film" size={25}/>} {duration>0&&<span className="vt-duration">{Math.floor(duration/60)}:{String(duration%60).padStart(2,'0')}</span>}</span>; }
+function drivePreview(link) {
+  try { const u = new URL(link); if (u.origin !== 'https://drive.google.com' || !/^\/file\/d\/[\w-]+\/view$/.test(u.pathname)) return ''; u.pathname = u.pathname.replace(/view$/, 'preview'); return u.href; } catch { return ''; }
+}
+function Timeline({ row, history }) {
+  const stages = [['Submitted'], ['Assigned','Downloaded','Editing','Correction Requested'], ['Under Review'], ['Completed']];
+  const current = stages.findIndex(group=>group.includes(row.status));
+  return <div className="vt-timeline" aria-label="Request progress">{stages.map((group,i)=>{const h=history.find(item=>group.includes(item.status));const done=i===0||current>=i||Boolean(h);return <div key={group[0]} className={done?'reached':''}><span className="vt-step"><Glyph name={['list','film','play','check'][i]}/></span><strong>{['Request received','Assigned / editing','In review','Completed'][i]}</strong><small>{i===0?fmt(row.created):h?.time?fmt(h.time):done?'Reached':'Pending'}</small></div>})}</div>;
+}
 function Login() {
   const [email, set] = useState(""),
     [password, pass] = useState(""),
     [msg, say] = useState(""),
-    [busy, block] = useState(false);
+    [busy, block] = useState(false), [visible, setVisible] = useState(false);
   async function go(reset) {
     block(true);
     say("");
@@ -71,15 +104,16 @@ function Login() {
         say("Check your email for the password reset link.");
       } else await signInWithEmailAndPassword(teamAuth, email, password);
     } catch (e) {
-      say(e.message);
+      say(e.code==='auth/operation-not-allowed' ? 'Email/password login is disabled. Ask your administrator to enable it in Firebase Authentication.' : e.message);
     } finally {
       block(false);
     }
   }
   return (
-    <main className="ve">
-      <section>
-        <h1>Video editing team</h1>
+    <main className="ve vt-login">
+      <div className="vt-login-art"><Brand/><span className="vt-login-tag">Video Editing Team</span><div className="vt-illustration"><Glyph name="film" size={108}/></div><h2>Great videos start here.</h2><p>Your dedicated workspace for professional video editing.</p></div>
+      <section className="vt-login-card">
+        <Brand/><h1>Video Editing Team Login</h1><p className="quiet">Sign in to manage and edit video requests</p>
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -88,34 +122,35 @@ function Login() {
         >
           <label>
             Email
-            <input
+            <span className="vt-input-icon"><Glyph name="mail"/><input placeholder="you@example.com"
               required
               type="email"
               autoComplete="username"
               value={email}
               onChange={(e) => set(e.target.value)}
-            />
+            /></span>
           </label>
           <label>
             Password
-            <input
+            <span className="vt-input-icon"><Glyph name="lock"/><input
               required
-              type="password"
+              placeholder="Enter your password"
+              type={visible ? "text" : "password"}
               autoComplete="current-password"
               value={password}
               onChange={(e) => pass(e.target.value)}
-            />
+            /><button type="button" className="vt-eye" aria-label={visible?'Hide password':'Show password'} onClick={()=>setVisible(v=>!v)}>{visible?'Hide':'Show'}</button></span>
           </label>
           <div className="actions">
             <button disabled={busy} className="primary">
-              Sign in
+              <Glyph name="exit"/> {busy ? 'Please wait…' : 'Sign in'}
             </button>
             <button
               type="button"
               disabled={!email || busy}
               onClick={() => go(true)}
             >
-              Reset password
+              Forgot password?
             </button>
           </div>
         </form>
@@ -132,7 +167,7 @@ export default function VideoTeam({ admin = false }) {
   );
   if (!admin && user === undefined) return <p>Checking team login…</p>;
   if (!admin && !user) return <Login />;
-  return <Panel key={admin ? "admin" : user.uid} admin={admin} />;
+  return <Panel key={admin ? "admin" : user.uid} admin={admin} user={user} />;
 }
 const emptyFilters = {
   filter: "",
@@ -144,7 +179,7 @@ const emptyFilters = {
   to: "",
   sort: "created",
 };
-function Panel({ admin }) {
+function Panel({ admin, user }) {
   const backend = getFunctions(admin ? app : teamApp, "asia-south1");
   const call = async (action, data = {}, isMedia = false) =>
     (
@@ -163,7 +198,7 @@ function Panel({ admin }) {
   const [detail, setDetail] = useState(null),
     [team, members] = useState([]),
     [teamCursor, moreTeam] = useState(null),
-    [tab, setTab] = useState("requests");
+    [tab, setTab] = useState("dashboard"), [menuOpen,setMenuOpen] = useState(false), [preview,setPreview] = useState(false), [advanced,setAdvanced] = useState(false);
   const [selected, selection] = useState([]),
     [editor, assignTo] = useState(""),
     [note, setNote] = useState(""),
@@ -181,17 +216,6 @@ function Panel({ admin }) {
     [error, err] = useState(""),
     [busy, blocking] = useState(false);
   const lock = useRef(false);
-  useEffect(() => {
-    if (
-      filters.filter !== "search" ||
-      !filters.value.trim() ||
-      tab !== "requests" ||
-      detail
-    )
-      return;
-    const timer = setTimeout(() => work(() => refresh(filters)), 450);
-    return () => clearTimeout(timer);
-  }, [filters.value, filters.filter]);
   async function work(fn) {
     if (lock.current) return;
     lock.current = true;
@@ -248,7 +272,7 @@ function Panel({ admin }) {
   }
   async function open(id) {
     const res = await call("details", { id });
-    setDetail(res);
+    setDetail(res); setPreview(false);
     setLink("");
     setNote("");
   }
@@ -295,11 +319,22 @@ function Panel({ admin }) {
       setPerson({ name: "", mobile: "", email: "", role: "editor", password: "", confirmPassword: "", active: true });
     });
   }
+  const displayName = admin ? 'Admin' : user?.displayName || user?.email?.split('@')[0] || 'Editor';
+  const roleName = info?.role === 'admin' ? 'Administrator' : info?.role === 'manager' ? 'Video Editing Manager' : 'Video Editor';
+  const count = status => info?.stats?.['s'+info.statuses.indexOf(status)] || 0;
+  const goView = (view, status = '', archived = false) => {
+    setMenuOpen(false); setDetail(null); setPreview(false);
+    if (view === 'team' || view === 'settings') {setTab(view);return;}
+    const f={...emptyFilters,archived,filter:status?'status':'',value:status};
+    setTab(view);filter(f); if(JSON.stringify(f)!==JSON.stringify(applied)) work(()=>refresh(f)); else {selection([]);showPage(0);}
+  };
+  const nav = (label, icon, view, status='', archived=false) => <button type="button" disabled={busy} className={(tab===view && !r && (view!=='requests' || (applied.archived===archived && (status?applied.filter==='status'&&applied.value===status:applied.filter!=='status'))))?'active':''} onClick={()=>goView(view,status,archived)}><Glyph name={icon}/><span>{label}</span></button>;
   return (
-    <main className="ve">
-      <header>
-        <h1>Video editing team</h1>
-        <div className="actions">
+    <main className={'ve vt-workspace '+(admin?'vt-admin':'vt-standalone')}>
+      <header className="vt-topbar">
+        <div className="vt-top-left"><button className="vt-menu" type="button" aria-label="Toggle navigation" aria-expanded={menuOpen} onClick={()=>setMenuOpen(v=>!v)}><Glyph name="menu"/></button><Brand/><span className="vt-top-title"><Glyph name="film"/> {admin?'Video Editing Service':'Video Editing Team'}</span></div>
+        <div className="vt-top-right"><span className="vt-avatar">{displayName.slice(0,2).toUpperCase()}</span><span className="vt-profile"><strong>{displayName}</strong><small>{roleName}</small></span>
+
           <button
             disabled={busy}
             onClick={() =>
@@ -309,13 +344,27 @@ function Panel({ admin }) {
               })
             }
           >
-            Refresh
+            <Glyph name="refresh"/><span className="vt-desktop-label">Refresh</span>
           </button>
           {!admin && (
-            <button onClick={() => signOut(teamAuth)}>Sign out</button>
+            <button aria-label="Sign out" onClick={() => signOut(teamAuth)}><Glyph name="exit"/><span className="vt-desktop-label">Sign out</span></button>
           )}
         </div>
       </header>
+      <div className="vt-shell">
+        <aside className={'vt-sidebar '+(menuOpen?'open':'')}>
+          <small className="vt-nav-label">WORKSPACE</small>
+          {nav('Dashboard','home','dashboard')}
+          {nav(admin?'All requests':'My requests','list','requests')}
+          {nav('In editing','play','requests','Editing')}
+          {nav('In review','play','requests','Under Review')}
+          {nav('Corrections','repeat','requests','Correction Requested')}
+          {nav('Completed','check','requests','Completed')}
+          {info?.role==='admin'&&nav('Archived requests','archive','requests','',true)}
+          {manager&&<><small className="vt-nav-label">MANAGEMENT</small>{nav('Team accounts','users','team')}{info.role==='admin'&&nav('Service settings','settings','settings')}</>}
+          {info?.support&&<a className="vt-support" href={'https://wa.me/'+info.support} target="_blank" rel="noreferrer"><Glyph name="chat"/> WhatsApp Support</a>}
+        </aside>
+        <div className="vt-content" aria-busy={busy}>
       {error && (
         <p role="alert" className="error">
           {error}
@@ -325,41 +374,9 @@ function Panel({ admin }) {
       {!info && !error && <p>Loading workspace…</p>}
       {info && (
         <>
-          <div className="actions">
-            {info.role === "admin" && (
-              <button
-                onClick={() => {
-                  setTab("settings");
-                  setDetail(null);
-                }}
-              >
-                Service settings
-              </button>
-            )}
-            <button
-              onClick={() => {
-                setTab("requests");
-                setDetail(null);
-                if (applied.archived) { const f={...emptyFilters}; filter(f); work(()=>refresh(f)); }
-              }}
-            >
-              Requests
-            </button>
-            {info.role === "admin" && <button disabled={busy} onClick={()=>{setTab("requests");setDetail(null);const f={...emptyFilters,archived:true};filter(f);work(()=>refresh(f));}}>Archived requests</button>}
-            {manager && (
-              <button
-                onClick={() => {
-                  setTab("team");
-                  setDetail(null);
-                }}
-              >
-                Team accounts
-              </button>
-            )}
-          </div>
           {tab === "settings" && settings ? (
-            <section>
-              <h2>Service settings</h2>
+            <section className="vt-settings">
+              <h1>Service settings</h1><p className="quiet">Manage video service configuration and support.</p>
               <label>
                 Support WhatsApp number with country code
                 <input
@@ -411,9 +428,9 @@ function Panel({ admin }) {
               </button>
             </section>
           ) : tab === "team" ? (
-            <section>
+            <section className="vt-accounts">
               <header>
-                <h2>Team accounts</h2>
+                <div><h1>Team accounts</h1><p className="quiet">Manage editors and their workspace access.</p></div>
                 <a
                   className="action"
                   href="/video-team"
@@ -424,11 +441,11 @@ function Panel({ admin }) {
                 </a>
               </header>
               <form onSubmit={account}>
-                <fieldset disabled={busy}>
+                <fieldset disabled={busy} className="vt-account-form">
                   <legend>Create account</legend>
                   {["name", "email", "mobile"].map((k) => (
                     <label key={k}>
-                      {k}
+                      {{name:'Full name',email:'Email address',mobile:'Mobile number'}[k]}
                       <input
                         required
                         type={k === "email" ? "email" : "text"}
@@ -514,23 +531,13 @@ function Panel({ admin }) {
               )}
             </section>
           ) : r ? (
-            <section>
-              <header>
-                <h2>
-                  {r.name} · {r.status}
-                </h2>
-                <button onClick={() => setDetail(null)}>
-                  Back to requests
-                </button>
-              </header>
-              <p>
-                {r.id} · {r.mobile} · {r.company} · {r.state}
-              </p>
-              <p>
-                {r.category} {r.other} · {fmt(r.created)}
-              </p>
-              <p className="note">{r.instructions}</p>
-              <p>Assigned editor · {r.editorName || "Unassigned"}</p>
+            <div className="vt-detail">
+              <header className="vt-page-head"><div><button className="vt-back" onClick={()=>setDetail(null)}><Glyph name="arrow"/> Back to requests</button><h1>Request details</h1><p className="quiet">{r.id}</p></div><Status value={r.status}/></header>
+              <section className="vt-detail-hero"><Thumb row={r}/><div><h2>{r.category} {r.other}</h2><p>{r.name} · {fmt(r.created)}</p><p className="quiet">Assigned editor: {r.editorName || 'Unassigned'}</p></div></section>
+              <section><h2>Request timeline</h2><Timeline row={r} history={detail.history}/></section>
+              <div className="vt-detail-grid"><div className="vt-detail-main">
+              <section><h2>Video details</h2><dl className="vt-facts"><dt>Category</dt><dd>{r.category} {r.other}</dd><dt>Submitted</dt><dd>{fmt(r.created)}</dd><dt>Assigned editor</dt><dd>{r.editorName || 'Unassigned'}</dd></dl><h3>Editing instructions</h3><p className="note vt-instructions">{r.instructions || 'No instructions provided.'}</p></section>
+              <section><h2>Customer details</h2><dl className="vt-facts"><dt>Name</dt><dd>{r.name}</dd><dt>Mobile</dt><dd>{r.mobile}</dd><dt>Company</dt><dd>{r.company}</dd><dt>State</dt><dd>{r.state}</dd></dl>
               <p>
                 {r.maxRounds - r.rounds} of {r.maxRounds} free corrections
                 remaining · Credit {r.credit}
@@ -577,7 +584,8 @@ function Panel({ admin }) {
                   </a>
                 )}
               </div>
-              {r.link && (
+              </section>
+              {r.link && <section className="vt-delivery"><h2>Edited video · Version {r.version}</h2>{drivePreview(r.link)&&<button className="primary" onClick={()=>setPreview(v=>!v)}><Glyph name="play"/> {preview?'Close preview':'Preview edited video'}</button>}{preview&&drivePreview(r.link)&&<iframe title="Edited video preview" src={drivePreview(r.link)} allowFullScreen loading="lazy" referrerPolicy="no-referrer"/>}
                 <a
                   className="action"
                   target="_blank"
@@ -585,8 +593,8 @@ function Panel({ admin }) {
                   href={r.link}
                 >
                   Open edited version {r.version}
-                </a>
-              )}
+                </a></section>
+              }
               {r.archived && <article><h3>Archived request</h3><p>Files are retained until permanent deletion. External Google Drive files are not deleted by this app.</p><div className="actions"><button disabled={busy || r.deleting} onClick={()=>work(async()=>{await command("restore");setDetail(null);await refresh();})}>Restore request</button><button disabled={busy} onClick={()=>{const mobile=prompt("Enter the registered mobile number to permanently delete this request and its R2 originals. Google Drive files remain external.");if(mobile && confirm("This cannot be undone. Permanently delete?"))work(async()=>{await call("permanentDelete",{id:r.id,mobile,confirmed:true});setDetail(null);await refresh();});}}>Permanently delete</button></div></article>}
               <fieldset disabled={busy || r.archived || r.rawCleanupPending}>
                 <legend>Raw clips</legend>
@@ -649,7 +657,7 @@ function Panel({ admin }) {
                   </button>
                 )}
               </fieldset>
-              <fieldset disabled={busy || r.archived}>
+              </div><aside className="vt-detail-actions"><fieldset disabled={busy || r.archived}>
                 <legend>Request actions</legend>
                 <div className="actions">
                   {manager &&
@@ -676,7 +684,7 @@ function Panel({ admin }) {
                   {["Downloaded", "Correction Requested"].includes(
                     r.status,
                   ) && (
-                    <button onClick={() => work(() => change("edit"))}>
+                    <button className="primary" onClick={() => work(() => change("edit"))}>
                       Start editing
                     </button>
                   )}
@@ -703,6 +711,7 @@ function Panel({ admin }) {
                       />
                     </label>
                     <button
+                      className="primary"
                       disabled={!link}
                       onClick={() =>
                         work(() =>
@@ -742,7 +751,7 @@ function Panel({ admin }) {
                   </button>
                 )}
                 {r.status === "Completed" && !r.rawDeleted && !r.archived && (
-                  <button
+                  <button className="vt-danger"
                     onClick={() => {
                       if (
                         confirm(
@@ -801,7 +810,7 @@ function Panel({ admin }) {
                     </button>
                   ) : null)}
               </fieldset>
-              <h3>Request and credit history</h3>
+              </aside></div><section className="vt-history"><h2>Request and credit history</h2>
               <ol>
                 {detail.history.map((h, i) => (
                   <li key={i}>
@@ -841,13 +850,15 @@ function Panel({ admin }) {
                   Earlier history
                 </button>
               )}
-            </section>
+            </section></div>
           ) : (
             <>
-              <section>
+              <header className="vt-page-head"><div><h1>{tab==='dashboard'?'Welcome, '+displayName:applied.archived?'Archived requests':admin?'Video requests':'My requests'}</h1><p className="quiet">{tab==='dashboard'?'Manage your video editing workload and recent requests.':'Review and manage video editing requests.'}</p></div><span className="vt-date"><Glyph name="calendar"/>{new Date().toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric',timeZone:'Asia/Kolkata'})}</span></header>
+              {tab==='dashboard'&&<div className="vt-kpis">{[['Total requests',info.stats.total||0,'list','blue'],['In editing',count('Editing'),'play','orange'],['Completed',count('Completed'),'check','green'],['Corrections',count('Correction Requested'),'repeat','purple']].map(([label,value,icon,tone])=><div className={'vt-kpi '+tone} key={label}><Glyph name={icon} size={34}/><div><b>{value}</b><span>{label}</span></div></div>)}</div>}
+              <section className="vt-overview">
                 <h2>{applied.archived ? "Archived requests" : "Service overview"}</h2>
                 {applied.archived && <button disabled={busy} onClick={()=>work(async()=>{const result=await call("reindexArchived",{cursor:migrationCursor});setMigrationCursor(result.cursor);await refresh();say(result.migrated+" old archives indexed."+(result.cursor?" Click again for next batch.":" Archive scan complete."));})}>{migrationCursor?"Index next 10 old archives":"Index older archived requests"}</button>}
-                <div className="metrics">
+                <details><summary>Detailed service metrics</summary><div className="metrics">
                   <div>
                     <b>{info.stats.total || 0}</b>Total requests
                   </div>
@@ -876,11 +887,12 @@ function Panel({ admin }) {
                     </b>
                     Average hours to approval
                   </div>
-                </div>
+                </div></details>
               </section>
-              <section>
-                <h2>Requests</h2>
-                <fieldset disabled={busy}>
+              <section className="vt-request-list">
+                <header><h2>{tab==='dashboard'?'Recent requests':'Requests'}</h2><div className="actions">{tab==='dashboard'&&<button onClick={()=>goView('requests')}>View all →</button>}<button onClick={()=>setAdvanced(v=>!v)} aria-expanded={advanced}>Filters {advanced?'−':'+'}</button></div></header>
+                <div className="vt-quick"><div className="vt-pills">{[['All',''],['New','Submitted'],['In editing','Editing'],['In review','Under Review'],['Corrections','Correction Requested'],['Completed','Completed']].map(([label,status])=><button key={label} disabled={busy} className={(status?applied.filter==='status'&&applied.value===status:!applied.filter)?'active':''} onClick={()=>{const f={...applied,filter:status?'status':'',value:status};setTab('requests');filter(f);if(JSON.stringify(f)!==JSON.stringify(applied))work(()=>refresh(f));else showPage(0);}}>{label}</button>)}</div><form className="vt-search" onSubmit={e=>{e.preventDefault();setTab('requests');work(()=>refresh({...filters,filter:filters.filter==='search'&&filters.value.trim()?'search':'',value:filters.filter==='search'?filters.value.trim():''}));}}><input aria-label="Search requests" placeholder="Search ID, customer or company" value={filters.filter==='search'?filters.value:''} onChange={e=>filter({...filters,filter:'search',value:e.target.value})}/><button disabled={busy} type="submit">Search</button></form></div>
+                <fieldset disabled={busy} hidden={!advanced} className="vt-advanced">
                   <div className="actions">
                     <SearchableSelect
                       sortOrder="original"
@@ -1042,88 +1054,24 @@ function Panel({ admin }) {
                     </button>
                   </div>
                 )}
-                <div className="ve-team-cards">{rows.map(row=><article key={row.id} className="ve-team-card"><div className="ve-thumb">{row.thumbnail?<img loading="lazy" src={row.thumbnail} alt="Raw clip preview"/>:"▶"}</div><div className="ve-card-copy"><strong>{row.category}</strong><p>{row.name} · {row.editorName || "Unassigned"}</p><small>{row.id} · {fmt(row.created)}</small></div><div className="ve-card-end"><b className="ve-status" data-status={row.status}>{row.status}</b><button disabled={busy} onClick={()=>work(()=>open(row.id))}>Details</button></div></article>)}</div>
-                <div className="wrap ve-team-table">
-                  <table>
-                    <thead>
-                      <tr>
-                        {[
-                          "Request",
-                          "Customer",
-                          "Company / state",
-                          "Status",
-                          "Editor",
-                          "Updated",
-                        ].map((k) => (
-                          <th key={k}>{k}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map((row) => (
-                        <tr key={row.id}>
-                          <td>
-                            {manager &&
-                              !["Completed", "Rejected", "Cancelled"].includes(
-                                row.status,
-                              ) && (
-                                <input
-                                  aria-label={"Select " + row.id}
-                                  type="checkbox"
-                                  checked={selected.includes(row.id)}
-                                  onChange={(e) =>
-                                    selection(
-                                      e.target.checked
-                                        ? [...selected, row.id]
-                                        : selected.filter((i) => i !== row.id),
-                                    )
-                                  }
-                                />
-                              )}{" "}
-                            <button
-                              disabled={busy}
-                              onClick={() => work(() => open(row.id))}
-                            >
-                              {row.id}
-                            </button>
-                            <br />
-                            {row.thumbnail && <img loading="lazy" src={row.thumbnail} alt="Raw clip preview" className="ve-table-thumb"/>}
-                            {row.category} · {row.fileCount} clips
-                            <br />
-                            {fmt(row.created)}
-                          </td>
-                          <td>
-                            {row.name}
-                            <br />
-                            {row.mobile}{" "}
-                            <a
-                              target="_blank"
-                              rel="noreferrer"
-                              href={whats(row, "chat")}
-                            >
-                              WhatsApp
-                            </a>
-                          </td>
-                          <td>
-                            {row.company} {row.state}
-                          </td>
-                          <td>
-                            {row.status} · round {row.rounds}
-                          </td>
-                          <td>{row.editorName || "Unassigned"}</td>
-                          <td>{fmt(row.updated)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="vt-list" role="table" aria-label="Video requests">
+                  <div className="vt-list-head" role="row"><span role="columnheader">Request details</span><span role="columnheader">Customer / company</span><span role="columnheader">Status</span><span role="columnheader">Editor / updated</span><span role="columnheader">Action</span></div>
+                  {rows.map(row=><div className="vt-list-row" role="row" key={row.id}>
+                    <div className="vt-row-request" role="cell">{manager&&!row.archived&&!['Completed','Rejected','Cancelled'].includes(row.status)&&<input aria-label={'Select '+row.id} type="checkbox" checked={selected.includes(row.id)} onChange={e=>selection(e.target.checked?[...selected,row.id]:selected.filter(i=>i!==row.id))}/>}<Thumb row={row}/><div><strong>{row.category}</strong><small>{row.id}</small><small>{fmt(row.created)} · {row.fileCount} clips</small></div></div>
+                    <div className="vt-row-customer" role="cell"><strong>{row.name}</strong><small>{row.company} {row.state}</small><a href={whats(row,'chat')} target="_blank" rel="noreferrer">WhatsApp · {row.mobile}</a></div>
+                    <div role="cell"><Status value={row.status}/><small>Round {row.rounds}</small></div>
+                    <div className="vt-row-editor" role="cell"><strong>{row.editorName || 'Unassigned'}</strong><small>{fmt(row.updated)}</small></div>
+                    <div role="cell"><button className="vt-open" disabled={busy} onClick={()=>work(()=>open(row.id))}>Open <span aria-hidden="true">›</span></button></div>
+                  </div>)}
                 </div>
-                {!rows.length && <p>No requests match this view.</p>}
+                {!rows.length && <p>{busy?'Loading requests…':'No requests match this view.'}</p>}
                 <div className="actions ve-pagination"><button disabled={busy || pageIndex===0} onClick={()=>showPage(pageIndex-1)}>Previous</button><small>Page {pageIndex+1}</small><button disabled={busy || (!cursor && !cachedPages[pageIndex+1])} onClick={()=>work(()=>list(applied,true))}>Next</button></div>
               </section>
             </>
           )}
         </>
       )}
+      </div></div>
     </main>
   );
 }
