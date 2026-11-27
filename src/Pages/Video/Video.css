@@ -1,0 +1,166 @@
+.ve {
+  --ve-line: #d6dde6;
+  --ve-blue: #1553b6;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: clamp(16px, 3vw, 32px);
+  color: #152e47;
+  font-family: inherit;
+  background: #f6f8fb;
+  min-height: 70vh;
+  line-height: 1.5;
+}
+.ve * {
+  box-sizing: border-box;
+}
+.ve h1 {
+  font-size: clamp(24px, 4vw, 34px);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+.ve h2 {
+  font-size: 19px;
+  font-weight: 650;
+}
+.ve h3,
+.ve dt {
+  font-weight: 650;
+}
+.ve p {
+  margin: 4px 0;
+}
+.ve header,
+.ve .actions,
+.ve .metrics {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.ve header {
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+.ve section,
+.ve article,
+.ve fieldset {
+  background: white;
+  border: 1px solid var(--ve-line);
+  border-radius: 12px;
+  padding: 16px;
+  margin: 12px 0;
+}
+.ve .metrics > div {
+  background: #eef4fd;
+  border-radius: 8px;
+  padding: 9px 15px;
+  min-width: 95px;
+}
+.ve .metrics b {
+  display: block;
+  font-size: 20px;
+}
+.ve label {
+  display: block;
+  font-weight: 550;
+  margin: 8px 0;
+}
+.ve input,
+.ve select,
+.ve textarea {
+  font: inherit;
+  max-width: 100%;
+  background: white;
+  color: #172e46;
+  padding: 8px;
+  border: 1px solid #a8b4c4;
+  border-radius: 6px;
+}
+.ve input:not([type="checkbox"]),
+.ve textarea {
+  width: 100%;
+}
+.ve textarea {
+  min-height: 85px;
+}
+.ve button,
+.ve a.action {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  justify-content: center;
+  color: #174a94;
+  background: #edf4ff;
+  border: 1px solid #c2d6ee;
+  border-radius: 7px;
+  padding: 7px 12px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.ve button.primary,
+.ve a.primary {
+  background: var(--ve-blue);
+  color: white;
+}
+.ve button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.ve .error {
+  color: #982d22;
+}
+.ve small {
+  color: #536578;
+}
+.ve video {
+  width: min(260px, 100%);
+  max-height: 180px;
+  background: #111;
+  border-radius: 6px;
+}
+.ve progress {
+  width: 100%;
+  accent-color: var(--ve-blue);
+}
+.ve .wrap {
+  overflow-x: auto;
+}
+.ve table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 14px;
+}
+.ve td,
+.ve th {
+  text-align: left;
+  padding: 8px;
+  border-bottom: 1px solid var(--ve-line);
+}
+.ve ol {
+  padding-left: 20px;
+  list-style: decimal;
+}
+.ve .panel-list {
+  display: grid;
+  gap: 6px;
+}
+.ve .panel-list button {
+  justify-content: space-between;
+  text-align: left;
+}
+.ve .stack {
+  display: grid;
+  gap: 6px;
+}
+.ve .note {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ve .quiet {
+  font-size: 14px;
+  color: #586a7e;
+}
+.ve .close {
+  margin-left: auto;
+}

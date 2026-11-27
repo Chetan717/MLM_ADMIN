@@ -270,6 +270,7 @@ module.exports = function paymentFunctions({
         return { count: userIds.length };
       }),
     ),
+    ...require("./video/functions")({ db, service, mode, requireMasterAdmin }),
     paymentCatalog: onCall(
       base,
       wrap("payment_catalog_denied", service.catalog),

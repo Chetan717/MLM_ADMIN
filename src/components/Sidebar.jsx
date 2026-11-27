@@ -59,6 +59,7 @@ const ALL_NAV_ITEMS = [
   { icon: ChartTreemap,       label: "Marketing",              id: "marketing",       link: "/marketing" },
   { icon: ChartTreemap,       label: "Remove Background API",  id: "removebg",        link: "/removebg" },
   { iconComponent: BarChartIcon, label: "Subscription Dashboard", id: "userdashboard", link: "/userdashboard" },
+  { iconComponent: BarChartIcon, label: "Video Editing Service", id: "video-editing", link: "/video-editing", ownerOnly: true },
   { iconComponent: BarChartIcon, label: "App Plans", id: "plans", permissionId: "companies", link: "/plans" },
   { iconComponent: BarChartIcon, label: "Razorpay Payments", id: "userdashboard", link: "/payments" },
   { iconComponent: PersonIcon,   label: "User Leads",          id: "leads",           link: "/leads" },

@@ -233,7 +233,7 @@ function validateProviderPayment(purchase, payment, order) {
 }
 function nextEntitlement(previous, purchase, now) {
   const grants = (previous?.grants || []).filter(
-    (grant) => grant.expiresAtMs > now - 30 * DAY_MS,
+    (grant) => grant.expiresAtMs > now - 30 * DAY_MS || (grant.serviceType === "video" && grant.reservedVideoCredits > 0),
   );
   const services = planServices(purchase.plan);
   if (grants.length + services.length > 128)

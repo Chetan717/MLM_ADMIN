@@ -1351,6 +1351,9 @@ function createPaymentService({
     closeUncreated,
     scheduledReconcile,
     actor,
+    entitlementRef,
+    readAppEntitlement,
+    account: (owner) => context(owner, directReader),
   };
 }
 module.exports = { createPaymentService };

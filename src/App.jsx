@@ -23,11 +23,12 @@ import SecuritySessions from "./Pages/SecuritySessions";
 import TaskManagement from "./Pages/TaskManagement/TaskManagement";
 import Notifications from "./Pages/Notifications/Notifications";
 import DeleteRequests from "./Pages/DeleteRequests";
-import { lazy } from "react";
+import { lazy, Suspense } from "react";
 
 const ExpenseManager = lazy(() => import("./Pages/ExpenseManager/ExpenseManager"));
 const PopupManagement = lazy(() => import("./Pages/Popups/PopupManagement"));
 const Payments = lazy(() => import("./Pages/Payments/Payments"));
+const VideoTeam = lazy(() => import("./Pages/Video/VideoTeam"));
 const AppPlans = lazy(() => import("./Pages/Plans/AppPlans"));
 
 import { useAdminAuth } from "./Auth/AdminAuthContext";
@@ -35,6 +36,7 @@ import { adminWorkspaceKey } from "./Utils/adminPageState.js";
 import { RetainedAdminRoutes } from "./components/RetainedAdminViews.jsx";
 
 const ADMIN_PAGES = [
+  { path: "/video-editing", element: <VideoTeam admin /> },
   { path: "/plans", element: <AppPlans /> },
   { path: "/payments", element: <Payments /> },
   { path: "/", element: <Home /> },
@@ -76,6 +78,7 @@ function AuthenticatedWorkspace() {
 
 export default function App() {
   return <Routes>
+    <Route path="/video-team/*" element={<Suspense fallback={<p>Loading video team…</p>}><VideoTeam /></Suspense>} />
     <Route path="/login" element={<Login />} />
     <Route path="/signup" element={<Navigate to="/login" replace />} />
     <Route path="/forgetpin" element={<Navigate to="/login" replace />} />
