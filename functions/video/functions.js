@@ -386,7 +386,8 @@ module.exports = function videoFunctions({
     }
     query = range(query, d).orderBy(idField);
     if (d.cursor) query = query.startAfter(key(d.cursor));
-    const size = 10;
+    // Customer requests use five-row batches; keep admin/team paging unchanged.
+    const size = a.role === "customer" ? 5 : 10;
     const snap = await query.limit(size).get();
     const rows = snap.docs.map((doc) => {
       const { tags, metrics, ...row } = doc.data();
