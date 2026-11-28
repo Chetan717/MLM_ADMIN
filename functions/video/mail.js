@@ -6,7 +6,11 @@ function createVideoMailWorker({db, panelRef, root, emailSender, emailPassword, 
     const lease = randomUUID();
     const job = await db.runTransaction(async tx => {
       const row = (await tx.get(ref)).data();
-      if (!row || row.sentAt || !Number.isFinite(row.nextAttemptAt) || row.nextAttemptAt > now()) return null;
+      if (!row || row.sentAt || row.failedAt || !Number.isFinite(row.nextAttemptAt) || row.nextAttemptAt > now()) return null;
+      if ((row.attempts || 0) >= 10 || now() - row.created > 86400000) {
+        tx.update(ref, { nextAttemptAt: 8640000000000000, failedAt: now(), lease: null });
+        return null;
+      }
       tx.update(ref, { lease, nextAttemptAt: now()+180000, attempts: (row.attempts || 0)+1 });
       return row;
     });

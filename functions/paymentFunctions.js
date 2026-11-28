@@ -395,6 +395,8 @@ module.exports = function paymentFunctions({
               .doc(eventId)
               .create({
                 event: payload.event,
+                // Only the signed provider timestamp is used for dispute ordering.
+                providerCreatedAt: Number.isSafeInteger(payload.created_at) && payload.created_at > 0 ? payload.created_at : 0,
                 paymentId,
                 mode: mode.value(),
                 status: "pending",
@@ -442,6 +444,7 @@ module.exports = function paymentFunctions({
           await service.webhook(
             {
               event: row.event,
+              created_at: row.providerCreatedAt || 0,
               payload: { payment: { entity: { id: row.paymentId } } },
             },
             event.params.eventId,

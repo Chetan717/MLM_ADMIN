@@ -82,13 +82,13 @@ test("Accept valid Drive forms and retain a file's resource key", () => {
   ])
     assert.throws(() => V.drive(link));
 });
-test("Five clips of 200 MB each accepted, sixth or oversized clip rejected", () => {
-  const f = { type: "video/mp4", name: "clip.mp4", size: 200000000 };
+test("Five clips of 150 MB each accepted, sixth or oversized clip rejected", () => {
+  const f = { type: "video/mp4", name: "clip.mp4", size: 150000000 };
   assert.equal(V.manifest(Array(5).fill(f)).length, 5);
   for (const files of [
     [],
     Array(6).fill(f),
-    [{ ...f, size: 200000001 }],
+    [{ ...f, size: 150000001 }],
     [{ ...f, type: "text/html" }],
   ])
     assert.throws(() => V.manifest(files));

@@ -149,6 +149,8 @@ export default function Payments() {
           className={inputClass}
         >
           <option value="">All statuses</option>
+          <option value="pending">Pending</option>
+          <option value="expired">Expired</option>
           {[
             "created",
             "creation_unknown",
@@ -253,6 +255,7 @@ export default function Payments() {
                     }
                   >
                     {row.status.replaceAll("_", " ")}
+                    {row.needsReview && <small className="block text-amber-700">Manual review required</small>}
                   </span>
                 </td>
                 <td className="px-4 py-3">
@@ -314,6 +317,8 @@ export default function Payments() {
                 ["Customer", `${selected.userName} · ${selected.mobileNo}`],
                 ["Order ID", selected.orderId || "Confirmation pending"],
                 ["Payment ID", selected.paymentId || "Not captured"],
+                ["Manual review", selected.needsReview ? "Required" : "Not flagged"],
+                ["Dispute resolution", selected.disputeResolution || "—"],
                 ["Coupon", selected.couponCode || "None"],
                 ["Taxable amount", money(selected.price.taxablePaise)],
                 ["Total", money(selected.price.totalPaise)],

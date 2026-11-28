@@ -130,7 +130,8 @@ function companyPlans(company, companyId) {
   return plans;
 }
 function appPlans(catalog) {
-  return companyPlans({ Plans: catalog?.Plans || [] }, "mlmlive_app");
+  return companyPlans({ Plans: catalog?.Plans || [] }, "mlmlive_app").map(plan =>
+    plan.serviceType === "video" ? plan : { ...plan, unlimitedDownloads: true, downloads: 0 });
 }
 function calculatePrice(plan, coupon = null) {
   const basePaise = money(plan.PlanAmount);
@@ -252,6 +253,7 @@ function nextEntitlement(previous, purchase, now) {
       purchaseId: purchase.id,
       serviceType,
       planName: purchase.plan.PlanName,
+      ...(purchase.plan.image_url ? { planImageUrl: purchase.plan.image_url } : {}),
       planType: purchase.plan.Type,
       duration: purchase.plan.Day_value,
       paidPaise: purchase.price?.totalPaise || 0,
@@ -294,7 +296,7 @@ function grantHasBalance(grant, now) {
   return grant.remainingCredits == null || Number(grant.remainingCredits) > 0;
 }
 function purchaseEligibility(entitlement, now) {
-  const held = new Set((entitlement?.grants || []).filter(g => grantHasBalance(g, now))
+  const held = new Set((entitlement?.grants || []).filter(g => entitlement?.scope === "app" && (g.serviceType || "poster") === "poster" ? !g.revoked && g.expiresAtMs > now : grantHasBalance(g, now))
     .map(g => g.serviceType || "poster"));
   return { poster: !held.has("poster"), video: !held.has("video"),
     combo: !held.has("poster") && !held.has("video") };
@@ -308,6 +310,7 @@ function planHasBenefits(plan) {
   return !planServices(plan).includes("poster") || plan.unlimitedDownloads === true || plan.downloads > 0;
 }
 function entitlementSummary(value, now) {
+  if (value?.scope === "app" && Array.isArray(value.grants)) value = { ...value, grants: value.grants.map(g => (g.serviceType || "poster") === "poster" ? { ...g, unlimitedDownloads: true } : g) };
   const services = Object.fromEntries(["poster", "video"].map((serviceType) => {
     const usable = (value?.grants || []).filter((g) =>
       grantHasBalance(g, now) && (g.serviceType || "poster") === serviceType)

@@ -116,10 +116,10 @@ function createPaymentService({
     });
     return owner;
   }
-  async function context(owner, reader) {
+  async function context(owner, reader, withCatalog = true) {
     const [users, catalogSnapshot] = await Promise.all([
       reader.get(db.collection("users").where("mobileNo", "in", [owner.mobileNo, Number(owner.mobileNo)]).limit(2)),
-      reader.get(ref("appPlans", "main")),
+      withCatalog ? reader.get(ref("appPlans", "main")) : Promise.resolve(null),
     ]);
     if (users.size !== 1) D.fail("failed-precondition", "Account needs verification. Contact support.");
     const user = users.docs[0].data();
@@ -254,12 +254,29 @@ function createPaymentService({
   async function catalog(request) {
     D.input(request.data || {}, []);
     const owner = await rate(request, "catalog");
-    const [ctx, entitlement] = await Promise.all([context(owner, directReader), readAppEntitlement(owner)]);
+    const [ctx, entitlement, lock] = await Promise.all([context(owner, directReader), readAppEntitlement(owner),
+      ref("_paymentCheckoutLocks", D.hash(`${getConfig().mode}:${owner.uid}:app:mlmlive`)).get()]);
+    let pendingCheckout = null;
+    if (lock.data()?.purchaseId) {
+      const pending = snapshotData(await ref(PURCHASES, lock.data().purchaseId).get());
+      if (pending?.uid === owner.uid && pending.mode === getConfig().mode && ["created", "pending", "creating", "creation_unknown"].includes(pending.status)) pendingCheckout = checkout(pending);
+    } else {
+      // Legacy checkouts without a lock: bounded lookup, no history scan.
+      const rows = await db.collection(PURCHASES).where("mode", "==", getConfig().mode).where("uid", "==", owner.uid)
+        .where("status", "in", ["created", "pending", "creating", "creation_unknown"]).limit(1).get();
+      if (rows.size) pendingCheckout = checkout(rows.docs[0].data());
+    }
     const eligibility = D.purchaseEligibility(entitlement, now());
+    const activePlans = {};
+    const missingArtwork = [...new Set((entitlement.grants || []).filter(g => !g.revoked && g.expiresAtMs > now() && !g.planImageUrl && g.purchaseId).map(g => g.purchaseId))].slice(0, 4);
+    await Promise.all(missingArtwork.map(async id => {
+      const p = snapshotData(await ref(PURCHASES, D.id(id)).get());
+      if (p?.uid === owner.uid && p.mode === getConfig().mode && p.plan?.image_url) activePlans[id] = { PlanName: p.plan.PlanName, serviceType: p.plan.serviceType || "poster", image_url: p.plan.image_url };
+    }));
     return { mode: getConfig().mode, scope: "app", appId: "mlmlive", appName: "MLM LIVE",
       version: Number(ctx.catalog?.version || 0),
       plans: D.appPlans(ctx.catalog).filter((p) => p.Launch && D.planHasBenefits(p) && eligibility[p.serviceType || "poster"]),
-      entitlement, eligibility, serverTimeMs: now(),
+      entitlement, eligibility, pendingCheckout, activePlans, serverTimeMs: now(),
       suggestedCoupon: /^[A-Z0-9]{6}$/.test(ctx.user.mteamCouponCode || "") ? ctx.user.mteamCouponCode : "" };
   }
   async function quote(request) {
@@ -340,7 +357,7 @@ function createPaymentService({
           const older = await tx.get(db.collection(PURCHASES).where("mode", "==", getConfig().mode)
             .where("uid", "==", owner.uid).where("status", "in", ["created", "pending", "creating", "creation_unknown"]).limit(101));
           if (older.size > 100) D.fail("resource-exhausted", "Check your pending payment history before starting a new checkout.");
-          previousId = older.docs.map((d) => d.data()).find((p) => p.expiresAtMs > time || ["creating", "creation_unknown"].includes(p.status))?.id;
+          previousId = older.docs.map((d) => d.data())[0]?.id;
         }
         const previous = previousId
           ? snapshotData(await tx.get(ref(PURCHASES, previousId)))
@@ -354,8 +371,7 @@ function createPaymentService({
             "disputed",
             "failed",
           ].includes(previous.status) &&
-          (previous.expiresAtMs > time ||
-            ["creating", "creation_unknown"].includes(previous.status))
+          ["created", "pending", "creating", "creation_unknown"].includes(previous.status)
         ) {
           if (previous.quoteId === request.data.quoteId)
             return { purchase: previous, isNew: false };
@@ -959,7 +975,7 @@ function createPaymentService({
       startsAtMs: purchase.startsAtMs || 0, expiresAtMs: purchase.subscriptionExpiresAtMs || 0,
       refundedPaise: purchase.refundedPaise || 0 } };
   }
-  async function applyReversal(purchaseId, payment, disputed) {
+  async function applyReversal(purchaseId, payment, disputed, disputeEvent = null) {
     await db.runTransaction(async (tx) => {
       const purchaseRef = ref(PURCHASES, purchaseId),
         purchase = snapshotData(await tx.get(purchaseRef));
@@ -977,6 +993,7 @@ function createPaymentService({
         purchase.price.totalPaise,
         "refund",
       );
+      if (disputeEvent && disputeEvent.at && purchase.disputeEventAtMs >= disputeEvent.at && purchase.disputeResolution) disputed = false;
       const cumulative = Math.max(refundedPaise, purchase.refundedPaise || 0),
         delta = cumulative - (purchase.refundedPaise || 0);
       if (!delta && (!disputed || purchase.disputed)) return;
@@ -1014,6 +1031,7 @@ function createPaymentService({
         status,
         refundedPaise: cumulative,
         disputed: disputed || purchase.disputed || false,
+        ...(disputed && disputeEvent ? { disputeEventAtMs: disputeEvent.at || 0, disputeResolution: null } : {}),
         updatedAtMs: now(),
       });
       tx.update(ref(subscriptions(purchase), purchase.subscriptionId), {
@@ -1161,9 +1179,24 @@ function createPaymentService({
     // Authorized/failed payments never grant access, even in a signed webhook.
     if (settled.status === "pending")
       D.fail("unavailable", "Payment capture is not yet confirmed.");
-    const disputed = payload.event.startsWith("payment.dispute.");
-    if (payment.amount_refunded || disputed)
-      await applyReversal(purchase.id, payment, disputed);
+    const resolution = ["payment.dispute.won", "payment.dispute.closed"].includes(payload.event);
+    const disputeHold = ["payment.dispute.created", "payment.dispute.lost"].includes(payload.event);
+    if (resolution) {
+      // A won/closed dispute is NOT proof of a refund or loss. Never revoke on this event alone.
+      // Previously reversed grants/commissions require explicit financial review before restoration.
+      const purchaseRef = ref(PURCHASES, purchase.id);
+      await db.runTransaction(async tx => {
+        const live = snapshotData(await tx.get(purchaseRef));
+        if (!live) return;
+        const eventAt = Number(payload.created_at || 0) * 1000;
+        if (eventAt && live.disputeEventAtMs > eventAt) return;
+        if (live.disputeResolution === payload.event && live.disputeEventAtMs === eventAt) return;
+        tx.update(purchaseRef, { disputeResolution: payload.event, disputeEventAtMs: eventAt, disputeReviewRequired: true, needsReview: true, updatedAtMs: now() });
+        auditRow(tx, live, "dispute_resolution_review_required", { event: payload.event });
+      });
+    }
+    if (payment.amount_refunded || disputeHold)
+      await applyReversal(purchase.id, payment, disputeHold, disputeHold ? { event: payload.event, at: Number(payload.created_at || 0) * 1000 } : null);
     await eventRef.set({
       event: payload.event,
       purchaseId,
@@ -1191,6 +1224,8 @@ function createPaymentService({
           "creating",
           "created",
           "creation_unknown",
+          "pending",
+          "expired",
           "failed",
           "paid",
           "refunded",
@@ -1288,19 +1323,18 @@ function createPaymentService({
   }
   async function scheduledReconcile() {
     // Bounded queue; no scan of users/subscriptions, no per-client polling loop.
-    const batch = await db
-      .collection(PURCHASES)
-      .where("mode", "==", getConfig().mode)
-      .where("nextReconcileAtMs", "<=", now())
-      .orderBy("nextReconcileAtMs")
-      .limit(25)
-      .get();
-    const queue = [...batch.docs];
+    const due = db.collection(PURCHASES).where("mode", "==", getConfig().mode)
+      .where("nextReconcileAtMs", "<=", now()).orderBy("nextReconcileAtMs");
+    const pending = await due.where("status", "in", ["creating", "created", "creation_unknown", "pending", "expired", "failed"]).limit(20).get();
+    const paid = await due.where("status", "in", ["paid", "refunded", "partially_refunded", "disputed"]).limit(25 - pending.size).get();
+    const queue = [...pending.docs, ...paid.docs];
     async function processNext(snap) {
       const purchase = snap.data();
       try {
         await reconcile(purchase);
-        const latest = (await snap.ref.get()).data();
+        await db.runTransaction(async tx => {
+        const latest = (await tx.get(snap.ref)).data();
+        if (!latest) return;
         const attempts = (latest.reconcileCount || 0) + 1;
         const activeMonitoring = latest.subscriptionExpiresAtMs > now();
         // Pending orders are checked for 48h. Paid orders get one daily refund
@@ -1309,21 +1343,25 @@ function createPaymentService({
           ? activeMonitoring
             ? now() + D.DAY_MS
             : null
-          : attempts < 192
-            ? now() + 15 * 60000
+          : attempts < 192 && now() - latest.createdAtMs < 48 * 3600000
+            ? now() + (latest.status === "expired" ? 60 : 15) * 60000
             : null;
-        await snap.ref.update({
+        tx.update(snap.ref, {
           reconcileCount: attempts,
           nextReconcileAtMs: next ?? FieldValue.delete(),
-          needsReview: !latest.orderId,
+          reconcileFailures: 0,
+          needsReview: Boolean(latest.disputeReviewRequired || !latest.orderId || (!latest.paymentId && !next && latest.status !== "expired")),
+        });
         });
       } catch (error) {
         audit("payment_reconcile_failed", {
           purchaseId: purchase.id,
           code: error.code || "internal",
         });
+        const failures = Number(purchase.reconcileFailures || 0) + 1;
         await snap.ref.update({
-          nextReconcileAtMs: now() + 3600000,
+          reconcileFailures: failures,
+          nextReconcileAtMs: failures >= 12 ? FieldValue.delete() : now() + Math.min(6, failures) * 3600000,
           needsReview: true,
         });
       }
@@ -1353,7 +1391,7 @@ function createPaymentService({
     actor,
     entitlementRef,
     readAppEntitlement,
-    account: (owner) => context(owner, directReader),
+    account: (owner) => context(owner, directReader, false),
   };
 }
 module.exports = { createPaymentService };

@@ -11,6 +11,9 @@ const D = require("../paymentDomain");
 const V = require("./domain");
 const { storage } = require("./storage");
 const day = 86400000;
+// Instance-local burst protection: no additional Firestore reads/writes. Durable draft quotas remain authoritative.
+const { makeBurstLimiter, validateParts } = require("./hardening");
+const burst = makeBurstLimiter();
 const idField = FieldPath.documentId();
 const secrets = [
   "VIDEO_R2_ACCOUNT_ID",
@@ -475,7 +478,11 @@ module.exports = function videoFunctions({
         "Daily upload draft limit reached. Contact support.",
         "resource-exhausted",
       );
-      tx.set(quota, { day: bucket, count: count + 1 });
+      const bytes = previous?.day === bucket ? Number(previous.bytes || 0) : 0;
+      const requestedBytes = manifest.reduce((sum, f) => sum + f.size, 0);
+      V.check(bytes + requestedBytes <= configInt("VIDEO_DAILY_UPLOAD_MB", 3000, 750, 30000) * 1000000,
+        "Daily video upload allowance reached. Try tomorrow or contact support.", "resource-exhausted");
+      tx.set(quota, { day: bucket, count: count + 1, bytes: bytes + requestedBytes });
       const id =
         "VE-" +
         String(9999999999999 - time).padStart(13, "0") +
@@ -522,7 +529,7 @@ module.exports = function videoFunctions({
         instructions,
         files,
         stage: "open",
-        expires: time + day * configInt("VIDEO_DRAFT_DAYS", 3, 1, 14),
+        expires: time + day * configInt("VIDEO_DRAFT_DAYS", 1, 1, 14),
         created: time,
       });
       return { id, partSize: V.PART };
@@ -611,7 +618,7 @@ module.exports = function videoFunctions({
       V.check(d.action !== "assign", "Editor assignment is disabled.", "permission-denied");
       const change = V.transition(r, d.action, d, a.role, Date.now());
       if (d.action === "archive") change.archivedBy = a.uid;
-      if (d.action === "cancel" && !r.rawDeleted) change.rawCleanupPending = true;
+      if (["cancel", "reject"].includes(d.action) && !r.rawDeleted) change.rawCleanupPending = true;
       if (change.credit) {
         const er = service.entitlementRef(r.uid),
           snap = await tx.get(er);
@@ -747,8 +754,29 @@ module.exports = function videoFunctions({
     );
     const ref = draftRef(a.uid);
     if (d.action === "discard") {
-      await cleanup(ref, store, d.id);
-      return {};
+      const id = key(d.id);
+      if (!(await cleanup(ref, store, id))) {
+        const existing = (await requestRef(id).get()).data();
+        if (existing?.uid === a.uid) return { submitted: true, id };
+      }
+      return { discarded: true };
+    }
+    // Durable signing quota uses the same two authoritative reads as before; one write per batch.
+    if (["parts", "part"].includes(d.action)) {
+      const {file, numbers} = await db.runTransaction(async tx => {
+        const [ds, es] = await Promise.all([tx.get(ref), tx.get(service.entitlementRef(a.uid))]);
+        const row = ds.data(); openDraft(row, d.id);
+        V.check(V.balance(es.data(), Date.now()).available > 0, "An active video plan and an available credit are required to upload.");
+        const i = d.index, file = row.files[i];
+        V.check(Number.isInteger(i) && file && file.uploadId && !file.ready, "Invalid upload session.");
+        const numbers = validateParts(d.action === "part" ? [d.part] : d.parts, Math.ceil(file.size / V.PART));
+        const count = Number(file.signedParts || 0) + numbers.length;
+        V.check(count <= 150, "Upload retry allowance reached. Cancel and retry your draft or contact support.", "resource-exhausted");
+        const files = [...row.files]; files[i] = {...file, signedParts: count}; tx.update(ref, {files});
+        return {file, numbers};
+      });
+      const urls = await Promise.all(numbers.map(async part => ({part, url: await store.sign(file, part)})));
+      return d.action === "part" ? {url: urls[0].url} : {urls};
     }
     const [draftSnap, ent] = await Promise.all([
       ref.get(),
@@ -791,27 +819,25 @@ module.exports = function videoFunctions({
       return { parts: await store.resume(f) };
     }
     V.check(f.uploadId, "Start upload first.");
-    if (d.action === "part") {
-      V.check(
-        !f.ready &&
-          Number.isInteger(d.part) &&
-          d.part >= 1 &&
-          d.part <= Math.ceil(f.size / V.PART),
-        "Invalid upload part.",
-      );
-      return { url: await store.sign(f, d.part) };
-    }
     V.check(d.action === "finish", "Unknown upload action.");
     if (!f.ready) {
-      await store.finish(f);
-      await update((old) => ({ ...old, ready: true }));
+      try {
+        await store.finish(f);
+        await update((old) => ({ ...old, ready: true }));
+      } catch (error) {
+        const live = (await ref.get()).data();
+        if ((!live || live.id !== d.id || live.stage === "cleaning") && !(await requestRef(d.id).get()).exists) {
+          await store.remove(f);
+        }
+        throw error;
+      }
     }
     return {};
   }
   async function cleanRequestRaw(ref, store, a, action) {
     const r = (await ref.get()).data();
     if (!r || r.rawDeleted || r.deleting) return;
-    V.check(r.status === "Cancelled" || (r.status === "Completed" && r.approvedAt && r.credit === "consumed"), "Raw cleanup is not permitted.");
+    V.check(["Cancelled", "Rejected"].includes(r.status) || (r.status === "Completed" && r.approvedAt && r.credit === "consumed"), "Raw cleanup is not permitted.");
     for (const f of r.files) { await store.abort(f); await store.remove(f); }
     await db.runTransaction(async tx => {
       const live = (await tx.get(ref)).data();
@@ -884,7 +910,7 @@ module.exports = function videoFunctions({
       });
       return data;
     });
-    if (!row) return;
+    if (!row) return false;
     for (const f of row.files) {
       await store.abort(f);
       await store.remove(f);
@@ -892,17 +918,20 @@ module.exports = function videoFunctions({
     await db.runTransaction(async (tx) => {
       if ((await tx.get(ref)).data()?.id === row.id) tx.delete(ref);
     });
+    return true;
   }
   function call(handler, options = {}) {
     return onCall({ ...base, ...options }, async (q) => {
       try {
-        const a = await actor(q),
-          d = q.data || {};
+        const d = q.data || {};
+        V.check(q.auth?.uid, "Sign in first.", "unauthenticated");
         V.check(
           JSON.stringify(d).length <= 32000,
           "Request is too large.",
           "invalid-argument",
         );
+        V.check(burst(q.auth.uid, d.action), "Too many video operations. Please retry shortly.", "resource-exhausted");
+        const a = await actor(q);
         return await handler(q, a, d);
       } catch (e) {
         if (e instanceof HttpsError) throw e;
@@ -930,12 +959,18 @@ module.exports = function videoFunctions({
           return list(a, d);
         case "details":
           return details(a, d);
+        case "finalLink": {
+          const r = (await requestRef(d.id).get()).data();
+          allow(a, r);
+          V.check(!r.deleting && r.status === "Completed" && r.link, "Final video is not available yet.");
+          return { link: V.drive(r.link) };
+        }
         case "draft":
           return draft(q, a, d);
         case "currentDraft": {
           V.check(a.role === "customer", "Customer required.");
           const r = (await draftRef(a.uid).get()).data();
-          return { id: r?.id || null, token: r?.token || null };
+          return { id: r?.id || null, token: r?.token || null, partSize: V.PART };
         }
         case "submit":
           return submit(a, d);
@@ -951,6 +986,7 @@ module.exports = function videoFunctions({
           return reindexArchived(a,d);
         case "permanentDelete":
           return permanentlyDelete(a,d);
+        case "reject":
         case "cancel": {
           const result = await mutate(q,d);
           try { await cleanRequestRaw(requestRef(d.id),privateStore(),a,"cancelRawCleanup"); } catch(e) { console.error("Raw cancellation cleanup deferred", {code:e.code||e.name}); }

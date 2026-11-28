@@ -30,7 +30,7 @@ const formats = {
   "video/quicktime": "mov",
   "video/webm": "webm",
 };
-const MAX_SIZE = 200000000,
+const MAX_SIZE = 150000000,
   PART = 8 * 1024 * 1024;
 function check(ok, message, code = "failed-precondition") {
   if (!ok) D.fail(code, message);
@@ -128,6 +128,7 @@ function credit(ledger, action, time, purchaseId) {
       held >= 1 && g.remainingCredits >= 1,
       "Reserved credit requires reconciliation.",
     );
+  if (action === "consume") check(!g.revoked, "Payment was reversed. Contact support before final approval.");
   grants[grants.indexOf(g)] = {
     ...g,
     reservedVideoCredits: held + (action === "reserve" ? 1 : -1),
@@ -159,7 +160,7 @@ function manifest(files) {
         Number.isSafeInteger(f.size) &&
         f.size > 0 &&
         f.size <= MAX_SIZE,
-      "Each video must be MP4, MOV or WebM and at most 200 MB.",
+      "Each video must be MP4, MOV or WebM and at most 150 MB.",
       "invalid-argument",
     );
     return { name: line(f.name, 200), size: f.size, type: f.type };
