@@ -2,6 +2,8 @@
 const { randomUUID } = require("node:crypto");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
+const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { createVideoMailWorker } = require("./mail");
 const { defineSecret } = require("firebase-functions/params");
 const { getAuth } = require("firebase-admin/auth");
 const { FieldPath, FieldValue } = require("firebase-admin/firestore");
@@ -61,10 +63,13 @@ module.exports = function videoFunctions({
   mode,
   requireMasterAdmin,
   createStorage = storage,
+  emailSender, emailPassword,
 }) {
   const modeId = () => modeKey(mode.value());
   const root = (m = modeId()) => db.collection("videoService").doc(m);
   const teams = () => db.collection("_videoEditingTeam");
+  const panelRef = () => teams().doc("_panel");
+  const mail = createVideoMailWorker({ db, panelRef, root, emailSender, emailPassword });
   const requestRef = (id) => root().collection("requests").doc(key(id));
   const draftRef = (uid) => root().collection("drafts").doc(D.hash(uid));
   const feed = (scope, sort, m = modeId()) =>
@@ -90,15 +95,11 @@ module.exports = function videoFunctions({
       return { uid, role: "admin" };
     }
     if (panel === "video-team") {
-      const ref = teams().doc(uid),
-        snap = await (tx ? tx.get(ref) : ref.get()),
-        row = snap.data();
-      V.check(
-        row?.active && ["manager", "editor"].includes(row.role),
-        "Team access is disabled.",
-        "permission-denied",
-      );
-      return { uid, role: row.role };
+      const ref = panelRef(), snap = await (tx ? tx.get(ref) : ref.get());
+      const row = snap.data();
+      V.check(row?.active === true && !row.busyUntil && row.uid === uid && (!row.sessionAfter || Number(q.auth.token.auth_time) >= row.sessionAfter),
+        "Video panel access is disabled. Contact the administrator.", "permission-denied");
+      return { uid, role: "panel" };
     }
     return { ...service.actor(q), role: "customer" };
   }
@@ -106,15 +107,15 @@ module.exports = function videoFunctions({
     V.check(
       r &&
         (a.role === "admin" ||
-          a.role === "manager" ||
-          (a.role === "customer" ? r.uid === a.uid : r.editor === a.uid)),
+          (a.role === "panel" && !r.archived && !r.deleting) ||
+          (a.role === "customer" && r.uid === a.uid)),
       "Request is unavailable.",
       "permission-denied",
     );
   }
   function projections(tx, r, old, m = modeId()) {
     const scopes = ["u-" + D.hash(r.uid), r.archived ? "archived" : "team"];
-    if (r.editor && !r.archived) scopes.push("e-" + r.editor);
+    // Legacy per-editor views are removed as requests are updated; shared view is authoritative.
     const row = {
       id: r.id,
       name: r.name,
@@ -135,13 +136,12 @@ module.exports = function videoFunctions({
       fileCount: r.files.length,
       metrics: metrics(r),
     };
-    const values = [r.id, r.name, r.company, r.mobile, r.editorName]
+    const values = [r.id, r.name, r.company, r.mobile]
       .filter(Boolean)
       .map((v) => v.toLowerCase());
     const tags = [
       "company:" + r.company.toLowerCase(),
       "state:" + r.state.toLowerCase(),
-      "assignment:" + (r.editor ? "assigned" : "unassigned"),
       "status:" + r.status,
       "category:" + r.category,
       "raw:" + r.rawDeleted,
@@ -202,7 +202,7 @@ module.exports = function videoFunctions({
   }
   function save(tx, ref, r, change, a, action, old = r) {
     const time = Date.now(),
-      next = { ...r, ...change, updated: time };
+      next = { ...r, ...change, editor: "", editorName: "", updated: time };
     if (next.archived) next.archiveIndexed = true;
     tx.set(ref, next);
     projections(tx, next, old, ref.parent.parent.id);
@@ -335,8 +335,8 @@ module.exports = function videoFunctions({
       return "archived";
     }
     if (a.role === "customer") return "u-" + D.hash(a.uid);
-    if (a.role === "editor") return "e-" + a.uid;
-    return d.editor ? "e-" + key(d.editor) : "team";
+    V.check(!d.editor, "Editor assignment is no longer supported.", "invalid-argument");
+    return "team";
   }
   function range(query, d) {
     for (const field of ["from", "to"])
@@ -369,7 +369,6 @@ module.exports = function videoFunctions({
           "search",
           "company",
           "state",
-          "assignment",
         ].includes(d.filter),
         "Invalid filter.",
       );
@@ -379,7 +378,7 @@ module.exports = function videoFunctions({
         "array-contains",
         d.filter +
           ":" +
-          (["search", "company", "state", "assignment"].includes(d.filter)
+          (["search", "company", "state"].includes(d.filter)
             ? value.toLowerCase()
             : value),
       );
@@ -410,7 +409,7 @@ module.exports = function videoFunctions({
     const snap = await query.limit(31).get(),
       docs = snap.docs.slice(0, 30),
       last = docs.at(-1);
-    const balance = ["admin", "manager"].includes(a.role)
+    const balance = a.role === "admin"
       ? V.balance(
           (await service.entitlementRef(r.uid).get()).data(),
           Date.now(),
@@ -587,6 +586,7 @@ module.exports = function videoFunctions({
         "submit",
         null,
       );
+      tx.create(root().collection("newRequestMail").doc(r.id), { id: r.id, category: r.category, created: r.created, nextAttemptAt: Date.now(), attempts: 0 });
       tx.delete(dr);
       return { id: r.id };
     });
@@ -608,19 +608,7 @@ module.exports = function videoFunctions({
         return { id: r.id };
       }
       V.check(!r.deleting && (!r.archived || d.action === "restore"), "Request is archived or being deleted.");
-      if (d.action === "assign") {
-        V.check(
-          ["admin", "manager"].includes(a.role),
-          "Manager required.",
-          "permission-denied",
-        );
-        const member = (await tx.get(teams().doc(key(d.editor)))).data();
-        V.check(
-          member?.active && member.role === "editor",
-          "Select an active editor.",
-        );
-        d = { ...d, editorName: member.name };
-      }
+      V.check(d.action !== "assign", "Editor assignment is disabled.", "permission-denied");
       const change = V.transition(r, d.action, d, a.role, Date.now());
       if (d.action === "archive") change.archivedBy = a.uid;
       if (d.action === "cancel" && !r.rawDeleted) change.rawCleanupPending = true;
@@ -640,96 +628,81 @@ module.exports = function videoFunctions({
       return { id: r.id };
     });
   }
-  async function members(a, d) {
-    V.check(
-      ["manager", "admin"].includes(a.role),
-      "Manager required.",
-      "permission-denied",
-    );
-    let query = teams().orderBy(idField);
-    if (d.cursor) query = query.startAfter(key(d.cursor));
-    const snap = await query.limit(51).get(),
-      rows = snap.docs
-        .slice(0, 50)
-        .map((doc) => ({ uid: doc.id, ...doc.data() }));
-    return { rows, cursor: snap.size > 50 ? rows.at(-1).uid : null };
+  function adminOnly(a) { V.check(a.role === "admin", "Master Admin required.", "permission-denied"); }
+  async function panelAccount(a) {
+    adminOnly(a);
+    const row = (await panelRef().get()).data();
+    return { account: row ? { uid: row.uid, email: row.email || "", name: row.name || "Video Editing", active: row.active === true, pending: !!row.busyUntil } : null };
   }
-  async function manage(a, d) {
-    V.check(
-      ["manager", "admin"].includes(a.role),
-      "Manager required.",
-      "permission-denied",
-    );
-    const auth = getAuth();
-    if (d.uid) {
-      const ref = teams().doc(key(d.uid)),
-        row = (await ref.get()).data();
-      V.check(
-        row &&
-          (a.role === "admin" || row.role === "editor") &&
-          typeof d.active === "boolean",
-        "Permission denied.",
-        "permission-denied",
-      );
-      // Deny immediately even while Firebase Auth account updates propagate.
-      if (!d.active) await ref.update({ active: false });
-      await auth.updateUser(ref.id, { disabled: !d.active });
-      if (!d.active) await auth.revokeRefreshTokens(ref.id);
-      await ref.update({ active: d.active });
-      return {};
+  async function managePanel(a, d) {
+    adminOnly(a);
+    const auth = getAuth(), ref = panelRef(), operation = d.operation;
+    V.check(["save", "delete", "toggle"].includes(operation), "Invalid account action.", "invalid-argument");
+    let email, name;
+    if (operation === "save") {
+      email = V.line(d.email, 254).toLowerCase(); name = V.line(d.name || "Video Editing", 120);
+      V.check(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email), "Enter a valid email.", "invalid-argument");
+      V.check(!d.password || (typeof d.password === "string" && d.password.length >= 8 && d.password.length <= 128 && /[a-z]/.test(d.password) && /[A-Z]/.test(d.password) && /[0-9]/.test(d.password)), "Use 8–128 characters with upper/lowercase letters and a number.", "invalid-argument");
     }
-    const email = V.line(d.email, 254).toLowerCase(),
-      name = V.line(d.name, 120),
-      mobile = V.line(d.mobile, 16);
-    V.check(
-      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && /^\+?\d{10,15}$/.test(mobile),
-      "Check email and mobile.",
-      "invalid-argument",
-    );
-    V.check(
-      d.role === "editor" || (a.role === "admin" && d.role === "manager"),
-      "Invalid team role.",
-      "permission-denied",
-    );
-    V.check(typeof d.password === "string" && d.password.length >= 8 && d.password.length <= 128 && /[a-z]/.test(d.password) && /[A-Z]/.test(d.password) && /[0-9]/.test(d.password), "Use 8–128 characters with upper/lowercase letters and a number.", "invalid-argument");
-    V.check(typeof d.active === "boolean", "Choose account status.", "invalid-argument");
-    const uid = "ve_" + D.hash(email).slice(0, 40),
-      ref = teams().doc(uid);
-    // Never attach privileges to an existing unrelated email account.
-    try {
-      await auth.createUser({
-        uid,
-        email,
-        displayName: name,
-        password: d.password,
-        disabled: true,
-      });
-    } catch (e) {
-      if (e.code !== "auth/uid-already-exists") throw e;
-      const existing = await auth.getUser(uid);
-      V.check(existing.email === email && existing.disabled, "Team account already exists.");
+    if (operation === "delete") V.check(d.confirmed === true, "Confirm account deletion.");
+    if (operation === "toggle") V.check(typeof d.active === "boolean", "Choose account status.");
+    const initial = (await ref.get()).data();
+    let candidate = initial?.uid || "ve_shared_" + randomUUID().replaceAll("-", "");
+    if (!initial && operation === "save") {
+      // Adopt a former editor account only if its Auth claims AND server-only record match.
+      try {
+        const existing = await auth.getUserByEmail(email);
+        const legacy = (await teams().doc(existing.uid).get()).data();
+        V.check(existing.customClaims?.panel === "video-team" && legacy && ["editor", "manager"].includes(legacy.role) && String(legacy.email).toLowerCase() === email, "Email belongs to another account. Choose another email.");
+        candidate = existing.uid;
+      } catch (e) { if (e.code !== "auth/user-not-found") throw e; }
     }
-    await db.runTransaction(async (tx) => {
+    if (initial && operation === "save" && email !== initial.email) {
+      try { const existing = await auth.getUserByEmail(email); V.check(existing.uid === initial.uid, "Email belongs to another account."); }
+      catch(e) { if (e.code !== "auth/user-not-found") throw e; }
+    }
+    const op = randomUUID();
+    const previous = await db.runTransaction(async tx => {
       const row = (await tx.get(ref)).data();
-      V.check(
-        !row ||
-          (row.provisioning && row.role === d.role && row.createdBy === a.uid),
-        "Team account already exists.",
-      );
-      tx.set(ref, {
-        name,
-        email,
-        mobile,
-        role: d.role,
-        active: false,
-        provisioning: true,
-        createdBy: a.uid,
-      });
+      V.check((row?.uid || null) === (initial?.uid || null), "Account changed. Refresh and retry.");
+      V.check(!row?.busyUntil || row.busyUntil < Date.now(), "Account update in progress. Try again shortly.");
+      V.check(row || operation === "save", "Create the panel account first.");
+      if (!row && operation === "save") V.check(!!d.password, "Enter an initial password.");
+      tx.set(ref, { uid: row?.uid || candidate, email: row?.email || email, name: row?.name || name, active: false, operation: op, busyUntil: Date.now()+180000 });
+      return row || null;
     });
-    await auth.setCustomUserClaims(uid, { panel: "video-team" });
-    await auth.updateUser(uid, { password: d.password, disabled: !d.active });
-    await ref.update({ active: d.active, provisioning: false });
-    return { uid, email };
+    const uid = previous?.uid || candidate;
+    try {
+      if (operation === "delete") {
+        try { await auth.deleteUser(uid); } catch(e) { if (e.code !== "auth/user-not-found") throw e; }
+        await ref.delete();
+        return {};
+      }
+      if (operation === "toggle") {
+        await auth.updateUser(uid, { disabled: !d.active });
+        if (!d.active) await auth.revokeRefreshTokens(uid);
+        await ref.set({ uid, email: previous.email, name: previous.name, active: d.active, sessionAfter: Math.ceil(Date.now()/1000) });
+        return {};
+      }
+      let existing;
+      try { existing = await auth.getUser(uid); } catch(e) { if(e.code !== "auth/user-not-found") throw e; }
+      if (!existing) {
+        V.check(!!d.password, "Set a password to finish account creation.");
+        await auth.createUser({ uid, email, displayName: name, password: d.password, disabled: true });
+      } else {
+        await auth.updateUser(uid, { email, displayName: name, disabled: true, ...(d.password ? { password:d.password } : {}) });
+      }
+      await auth.setCustomUserClaims(uid, { panel: "video-team" });
+      await auth.revokeRefreshTokens(uid);
+      const active = previous ? (previous.active === true || d.active === true) : true;
+      await auth.updateUser(uid, { disabled: !active });
+      await ref.set({ uid, email, name, active, sessionAfter: Math.ceil(Date.now()/1000) });
+      return {};
+    } catch (e) {
+      // Fail closed; administrator can retry with the same UID, or delete the account.
+      await ref.set({ uid, email: previous?.email || email, name: previous?.name || name, active: false });
+      throw e;
+    }
   }
   async function files(q, a, d) {
     const store = privateStore();
@@ -739,7 +712,7 @@ module.exports = function videoFunctions({
       allow(a, r);
       V.check(
         a.role !== "customer",
-        "Team access required.",
+        "Video panel access required.",
         "permission-denied",
       );
       if (d.action === "downloadAll") {
@@ -966,10 +939,14 @@ module.exports = function videoFunctions({
         }
         case "submit":
           return submit(a, d);
+        case "panelAccount":
+          return panelAccount(a);
+        case "managePanel":
+          return managePanel(a, d);
         case "members":
-          return members(a, d);
         case "manage":
-          return manage(a, d);
+          V.check(false, "Team accounts have been replaced by the single Video Panel account.", "permission-denied");
+          break;
         case "reindexArchived":
           return reindexArchived(a,d);
         case "permanentDelete":
@@ -984,6 +961,10 @@ module.exports = function videoFunctions({
       }
     }, { secrets }),
     videoEditingMedia: call(files, { secrets }),
+    ...(emailSender && emailPassword ? {
+      videoNewRequestEmail: onDocumentCreated({ document: "videoService/{mode}/newRequestMail/{id}", region: "asia-south1", secrets: [emailPassword], timeoutSeconds: 90, maxInstances: 3, concurrency: 2 }, async event => { if (event.data) await mail.deliver(event.data.ref); }),
+      videoNewRequestEmailRetry: onSchedule({ region: "asia-south1", secrets: [emailPassword], schedule: "every 5 minutes", timeoutSeconds: 300, maxInstances: 1 }, mail.retry),
+    } : {}),
     videoEditingDraftCleanup: onSchedule(
       {
         ...base,

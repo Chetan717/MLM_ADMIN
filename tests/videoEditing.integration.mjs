@@ -10,7 +10,7 @@ const { initializeApp, deleteApp } = require("firebase-admin/app"),
 const { createPaymentService } = require("./paymentService"),
   D = require("./paymentDomain"),
   build = require("./video/functions");
-test("Customer, assigned editor and master admin complete and settle one request through the callable handlers", async () => {
+test("Customer, single video panel and master admin complete and settle one request through the callable handlers", async () => {
   assert.match(
     process.env.FIRESTORE_EMULATOR_HOST || "",
     /^127\.0\.0\.1:\d+$/,
@@ -94,6 +94,7 @@ test("Customer, assigned editor and master admin complete and settle one request
         .collection("_videoEditingTeam")
         .doc(u.uid)
         .set({ role: "editor", active: true, name: u.uid });
+    await db.collection("_videoEditingTeam").doc("_panel").set({uid:editor.uid, email:"panel@example.test", active:true});
     await plan("poster");
     await assert.rejects(() => call(own, "draft", draft), {
       code: "failed-precondition",
@@ -118,10 +119,12 @@ test("Customer, assigned editor and master admin complete and settle one request
       call(own, "draft", { ...draft, token: randomUUID() }),
     );
     await assert.rejects(() => call(outsider, "details", { id }));
-    await assert.rejects(() => media(editor, "download", { id, index: 0 }));
-    await call(owner, "assign", { id, editor: otherEditor.uid });
-    await call(owner, "assign", { id, editor: editor.uid });
-    assert.equal((await call(otherEditor, "list")).rows.length, 0);
+    assert.equal((await call(editor,"list")).rows[0].id,id);
+    assert.equal((await call(owner,"list")).rows[0].id,id);
+    await assert.rejects(() => call(owner, "assign", { id, editor: otherEditor.uid }));
+    await assert.rejects(() => call(otherEditor, "list"));
+    const mailJob = await db.collection("videoService").doc("test").collection("newRequestMail").doc(id).get();
+    assert.ok(mailJob.exists);
     await assert.rejects(() =>
       media(otherEditor, "download", { id, index: 0 }),
     );
@@ -197,7 +200,7 @@ test("Customer, assigned editor and master admin complete and settle one request
     assert.equal((await call(own, "list")).rows[0].id,id);
     await db
       .collection("_videoEditingTeam")
-      .doc(editor.uid)
+      .doc("_panel")
       .update({ active: false });
     await assert.rejects(() => call(editor, "list"));
     assert.equal((await call(own, "dashboard")).stats.s6, 1);
@@ -251,12 +254,11 @@ test("Customer, assigned editor and master admin complete and settle one request
       value: "Submitted",
       cursor: page1.cursor,
     });
-    assert.equal(page1.rows.length, 10);
-    assert.equal(page2.rows.length, 2);
-    assert.equal(
-      new Set([...page1.rows, ...page2.rows].map((r) => r.id)).size,
-      12,
-    );
+    const page3 = await call(own,"list",{filter:"status",value:"Submitted",cursor:page2.cursor});
+    assert.equal(page1.rows.length, 5);
+    assert.equal(page2.rows.length, 5);
+    assert.equal(page3.rows.length, 2);
+    assert.equal(new Set([...page1.rows,...page2.rows,...page3.rows].map(r=>r.id)).size,12);
   } finally {
     await db.terminate();
     await deleteApp(app);

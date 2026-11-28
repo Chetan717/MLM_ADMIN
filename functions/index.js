@@ -62,7 +62,7 @@ initializeApp();
 const db = getFirestore();
 // The payment backend lives in the existing Admin Firebase project. Both
 // frontends call it; secrets are never shipped in either frontend bundle.
-Object.assign(exports, require("./paymentFunctions")({ db, FieldValue, Timestamp, requireAssignedAdminTab, requireMasterAdmin }));
+
 const templateAssetCleanupQueue = createTemplateAssetCleanupQueue({ db, Timestamp });
 const scrypt = promisify(crypto.scrypt);
 const EMAIL_PASS = defineSecret("EMAIL_PASS");
@@ -83,6 +83,7 @@ const R2_PROFILE_PUBLIC_BASE_URL = defineString("R2_PROFILE_PUBLIC_BASE_URL", {
 const EMAIL_NODEMAILER = defineString("EMAIL_NODEMAILER", {
   default: "soilbooster717@gmail.com",
 });
+Object.assign(exports, require("./paymentFunctions")({ db, FieldValue, Timestamp, requireAssignedAdminTab, requireMasterAdmin, emailSender: EMAIL_NODEMAILER, emailPassword: EMAIL_PASS }));
 const REGION = "asia-south1";
 const USER_ACTIVITY_REGION = "us-central1";
 const TEMPLATE_STORAGE_CLEANUP_REGION = "us-central1";

@@ -167,7 +167,7 @@ function manifest(files) {
 }
 function transition(r, action, d, role, time) {
   const customer = role === "customer",
-    manager = ["admin", "manager"].includes(role);
+    manager = ["admin", "panel", "manager"].includes(role);
   const states = (...names) =>
     check(
       names.includes(r.status),
@@ -232,28 +232,13 @@ function transition(r, action, d, role, time) {
     };
   }
   check(!customer, "Team access required.", "permission-denied");
-  if (action === "assign") {
-    check(manager, "Manager access required.", "permission-denied");
-    states(
-      "Submitted",
-      "Assigned",
-      "Downloaded",
-      "Editing",
-      "Under Review",
-      "Correction Requested",
-    );
-    return {
-      editor: d.editor,
-      editorName: d.editorName,
-      status: r.status === "Submitted" ? "Assigned" : r.status,
-    };
-  }
+  if (action === "assign") check(false, "Editor assignment is disabled.", "permission-denied");
   if (action === "downloaded") {
-    states("Assigned");
+    states("Submitted", "Assigned");
     return { status: "Downloaded" };
   }
   if (action === "edit") {
-    states("Downloaded", "Correction Requested");
+    states("Submitted", "Assigned", "Downloaded", "Correction Requested");
     return { status: "Editing" };
   }
   if (action === "recoverLink") {

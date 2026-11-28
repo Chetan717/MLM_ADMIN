@@ -25,6 +25,7 @@ module.exports = function paymentFunctions({
   Timestamp,
   requireAssignedAdminTab,
   requireMasterAdmin,
+  emailSender, emailPassword,
 }) {
   const keyId = defineSecret("RAZORPAY_KEY_ID");
   const keySecret = defineSecret("RAZORPAY_KEY_SECRET");
@@ -270,7 +271,7 @@ module.exports = function paymentFunctions({
         return { count: userIds.length };
       }),
     ),
-    ...require("./video/functions")({ db, service, mode, requireMasterAdmin }),
+    ...require("./video/functions")({ db, service, mode, requireMasterAdmin, emailSender, emailPassword }),
     paymentCatalog: onCall(
       base,
       wrap("payment_catalog_denied", service.catalog),
