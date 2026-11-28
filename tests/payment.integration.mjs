@@ -94,8 +94,9 @@ test('concurrent checkout requests reserve one provider order; POST never runs i
 test('timeout after provider accepts order does not retry POST; signed webhook recovers missing mapping', async () => {
   const original = gateway.createOrder;
   gateway.createOrder = async purchase => { await original(purchase); throw new D.PaymentError('unavailable', 'timeout'); };
-  const result = await create(await quote()); assert.equal(result.status, 'creation_unknown'); assert.equal(result.orderId, '');
-  const resumed = await create(await quote()); assert.equal(resumed.purchaseId, result.purchaseId); assert.equal(resumed.status, 'creation_unknown'); assert.equal(posts, 1);
+  const originalQuote = await quote();
+  const result = await create(originalQuote, "lost_response_request"); assert.equal(result.status, 'creation_unknown'); assert.equal(result.orderId, '');
+  const resumed = await create(originalQuote, "lost_response_request"); assert.equal(resumed.purchaseId, result.purchaseId); assert.equal(resumed.status, 'creation_unknown'); assert.equal(posts, 1);
   const originalOrder = [...orders.values()][0]; const checkout = { ...result, orderId: originalOrder.id }; const payment = capture(checkout);
   await service.webhook({ event: 'payment.captured', payload: { payment: { entity: payment } } }, 'evt_recovered');
   assert.equal((await db.doc(`paymentPurchases/${result.purchaseId}`).get()).data().status, 'paid');
@@ -294,8 +295,8 @@ test('authorized bank payment stays pending after checkout timeout and preserves
   time += 31 * 60000;
   const pending = await service.status(req({ purchaseId: order.purchaseId }));
   assert.equal(pending.status, 'pending'); assert(pending.expiresAtMs > time);
-  const resumed = await create(await quote());
-  assert.equal(resumed.orderId, order.orderId); assert.equal(posts, 1);
+  await assert.rejects(create(await quote()), {code:"failed-precondition"});
+  assert.equal(posts, 1);
   assert.equal((await db.collection('paymentTestSubscriptions').get()).size, 0);
 });
 
@@ -463,4 +464,25 @@ test('a published zero-credit limited Poster plan cannot create a chargeable ord
  await db.doc('appPlans/main').update({Plans:[{...plan,downloads:0,unlimitedDownloads:false}]});
  assert.equal((await service.catalog(req({}))).plans.length,0);
  await assert.rejects(quote(),/credits are not configured/);assert.equal(posts,0);
+});
+
+// V8 regression: the exact 249 -> 1 rupee price change on a single plan ID.
+test('cancelled 249 order cannot be reused for 1 rupee purchase; history excludes unpaid', async()=>{
+ await db.doc('appPlans/main').update({Plans:[{...plan,PlanAmount:249}],version:2});
+ const old=await create(await quote()); assert.equal(old.price.totalPaise,29382);
+ await db.doc('appPlans/main').update({Plans:[{...plan,PlanAmount:1}],version:3});
+ const newQuote=await quote(); assert.equal(newQuote.price.totalPaise,118);
+ await assert.rejects(create(newQuote),e=>e.details?.pendingCheckout?.purchaseId===old.purchaseId);
+ const closed=await service.status(req({purchaseId:old.purchaseId,closeUnpaid:true})); assert.equal(closed.status,'expired');
+ assert.equal((await service.history(req({}))).items.length,0);
+ const fresh=await create(newQuote); assert.equal(fresh.price.totalPaise,118); assert.notEqual(fresh.orderId,old.orderId);
+ await verify(fresh,capture(fresh)); assert.equal((await service.history(req({}))).items.length,1);
+});
+test('signed late capture of a closed order is still settled exactly once and flagged',async()=>{
+ const old=await create(await quote()); await service.status(req({purchaseId:old.purchaseId,closeUnpaid:true}));
+ const payment=capture(old); const event={event:'payment.captured',payload:{payment:{entity:payment}}};
+ await service.webhook(event,'v8_late'); await service.webhook(event,'v8_late');
+ const p=(await db.doc('paymentPurchases/'+old.purchaseId).get()).data();
+ assert.equal(p.status,'paid'); assert.equal(p.lateCaptureAfterClose,true); assert.equal(p.needsReview,true);
+ assert.equal((await db.collection('paymentTestSubscriptions').get()).size,1);
 });

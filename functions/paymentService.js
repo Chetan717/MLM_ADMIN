@@ -300,6 +300,8 @@ function createPaymentService({
       companyName: purchase.scope === "app" ? "MLM LIVE" : purchase.companyName,
       plan: purchase.plan,
       price: purchase.price,
+      quoteId: purchase.quoteId || "",
+      couponCode: purchase.couponCode || "",
       mode: purchase.mode,
       expiresAtMs: purchase.expiresAtMs,
       receipt: purchase.id,
@@ -344,7 +346,7 @@ function createPaymentService({
         if (same) {
           if (
             same.uid !== owner.uid ||
-            same.quoteId !== request.data.quoteId
+            same.quoteId !== request.data.quoteId || same.plan.planId !== request.data.planId
           )
             D.fail(
               "permission-denied",
@@ -373,12 +375,9 @@ function createPaymentService({
           ].includes(previous.status) &&
           ["created", "pending", "creating", "creation_unknown"].includes(previous.status)
         ) {
-          if (previous.quoteId === request.data.quoteId)
-            return { purchase: previous, isNew: false };
-          D.fail(
-            "failed-precondition",
-            "A checkout is already pending. Check that payment before starting another.",
-          );
+          const error = new D.PaymentError("failed-precondition", "An earlier checkout needs a status check before starting a new payment.");
+          error.details = { checkoutNotCreated: true, pendingCheckout: checkout(previous) };
+          throw error;
         }
         const ctx = await priceContext(owner, request.data, tx); // Fresh reads and version checks inside the reservation transaction.
         const entRef = entitlementRef(owner.uid);
@@ -432,7 +431,7 @@ function createPaymentService({
     } catch (error) {
       // Validation failed before reservation or provider POST.
       if (error instanceof D.PaymentError && ["failed-precondition", "invalid-argument", "permission-denied", "resource-exhausted"].includes(error.code))
-        error.details = { checkoutNotCreated: true };
+        error.details = { ...error.details, checkoutNotCreated: true };
       throw error;
     }
     if (!selected.isNew) {
@@ -480,6 +479,7 @@ function createPaymentService({
               : {}),
           });
       });
+      if (error.definiteFailure) error.details = { ...error.details, checkoutNotCreated: true };
       if (error.code === "unavailable")
         return checkout({ ...purchase, status: "creation_unknown" });
       throw error;
@@ -666,6 +666,7 @@ function createPaymentService({
         subscriptionExpiresAtMs: grant.expiresAtMs,
         serviceGrants,
         nextReconcileAtMs: time + D.DAY_MS,
+        ...(purchase.checkoutClosedAtMs ? { lateCaptureAfterClose: true, needsReview: true } : {}),
       });
       const marketingPaise = purchase.commissions.reduce(
         (sum, row) => sum + row.amountPaise,
@@ -736,6 +737,7 @@ function createPaymentService({
         serviceGrants,
         totalPaise: purchase.price.totalPaise,
         refundedPaise,
+        ...(purchase.checkoutClosedAtMs ? { lateCaptureAfterClose: true } : {}),
       });
       return checkout({
         ...purchase,
@@ -787,7 +789,7 @@ function createPaymentService({
     }
     return result;
   }
-  async function reconcile(purchase) {
+  async function reconcile(purchase, { closeUnpaid = false } = {}) {
     const client = gateway();
     if (purchase.keyId !== client.keyId)
       D.fail(
@@ -795,6 +797,7 @@ function createPaymentService({
         "Original payment key is required for reconciliation.",
       );
     if (!purchase.orderId) {
+      if (purchase.status === "failed") return checkout(purchase);
       const matches =
         (await client.findOrdersByReceipt(purchase.id)).items?.filter(
           (order) => order.receipt === purchase.id,
@@ -814,7 +817,9 @@ function createPaymentService({
     }
     const order = await client.fetchOrder(purchase.orderId);
     const list = await client.fetchOrderPayments(purchase.orderId);
-    const captured = (list.items || []).find(
+    if (!order || order.id !== purchase.orderId || order.amount !== purchase.price.totalPaise || order.currency !== "INR" || !Number.isSafeInteger(order.amount_paid) || order.amount_paid < 0 || !Array.isArray(list?.items) || list.items.length >= 100 || (Number.isFinite(list.count) && list.count > list.items.length))
+      D.fail("unavailable", "Payment status could not be confirmed. Check again before paying.");
+    const captured = list.items.find(
       (payment) =>
         payment.status === "captured" || payment.status === "refunded",
     );
@@ -834,27 +839,42 @@ function createPaymentService({
       return result;
     }
     const waiting = order.status === "paid" || order.amount_paid > 0 ||
-      (list.items || []).some((p) => ["authorized", "created"].includes(p.status));
-    const expired = purchase.expiresAtMs < now() && !waiting;
-    if (expired || (waiting && purchase.expiresAtMs < now())) {
-      return db.runTransaction(async (tx) => {
+      !["created", "attempted"].includes(order.status) ||
+      list.items.some(p => p.status !== "failed");
+    const expired = purchase.expiresAtMs < now();
+    const close = !waiting && (closeUnpaid || expired || Boolean(purchase.checkoutClosedAtMs));
+    if (close || waiting) {
+      return db.runTransaction(async tx => {
         const purchaseRef = ref(PURCHASES, purchase.id);
         const current = snapshotData(await tx.get(purchaseRef));
-        // A captured-payment webhook may have settled while provider reads ran.
+        if (!current) D.fail("not-found", "Purchase was not found.");
+        // A webhook can settle during the provider reads. Never overwrite it.
         if (current.paymentId) return checkout(current);
-        const update = {
-          status: expired ? "expired" : "pending",
-          updatedAtMs: now(),
-          ...(!expired ? { expiresAtMs: now() + ORDER_LIFE_MS } : {}),
-        };
+        // Another status check may already have observed a bank payment.
+        if (!waiting && current.paymentConfirmationRequired && (!purchase.paymentConfirmationRequired || !list.items.length))
+          return checkout(current);
+        if (waiting) {
+          if (current.status === "pending" && current.paymentConfirmationRequired && !expired) return checkout(current);
+          const update = { status: "pending", paymentConfirmationRequired: true, updatedAtMs: now(),
+            ...(expired ? { expiresAtMs: now() + ORDER_LIFE_MS } : {}),
+            ...(current.checkoutClosedAtMs ? { nextReconcileAtMs: now() + 15 * 60000 } : {}) };
+          tx.update(purchaseRef, update);
+          return checkout({ ...current, ...update });
+        }
+        if (current.checkoutClosedAtMs && ["failed", "expired"].includes(current.status)) return checkout(current);
+        const update = { status: closeUnpaid && list.items.length ? "failed" : "expired",
+          checkoutClosedAtMs: now(), paymentConfirmationRequired: false, updatedAtMs: now(),
+          // One delayed safety check; signed webhooks still settle late captures.
+          nextReconcileAtMs: now() + 60 * 60000 };
         tx.update(purchaseRef, update);
         return checkout({ ...current, ...update });
       });
     }
-    return { ...checkout(purchase), status: "pending" };
+    return checkout(purchase);
   }
   async function status(request) {
-    D.input(request.data, ["purchaseId"]);
+    D.input(request.data, ["purchaseId", "closeUnpaid"]);
+    if (request.data.closeUnpaid !== undefined && typeof request.data.closeUnpaid !== "boolean") D.fail("invalid-argument", "Invalid checkout action.");
     const owner = await rate(request, "status"),
       purchase = await owned(owner, request.data.purchaseId);
     if (
@@ -863,7 +883,7 @@ function createPaymentService({
       )
     )
       return checkout(purchase);
-    return reconcile(purchase);
+    return reconcile(purchase, { closeUnpaid: request.data.closeUnpaid !== false });
   }
   async function history(request) {
     D.input(request.data || {}, ["cursor"]);
@@ -872,6 +892,7 @@ function createPaymentService({
       .collection(PURCHASES)
       .where("mode", "==", getConfig().mode)
       .where("uid", "==", owner.uid)
+      .where("status", "in", ["paid", "refunded", "partially_refunded", "disputed"])
       .orderBy("createdAtMs", "desc")
       .orderBy("id", "desc")
       .limit(21);
@@ -1343,14 +1364,16 @@ function createPaymentService({
           ? activeMonitoring
             ? now() + D.DAY_MS
             : null
-          : attempts < 192 && now() - latest.createdAtMs < 48 * 3600000
-            ? now() + (latest.status === "expired" ? 60 : 15) * 60000
+          : latest.checkoutClosedAtMs && ["expired", "failed"].includes(latest.status) && purchase.checkoutClosedAtMs
+            ? null
+            : attempts < 192 && now() - latest.createdAtMs < 48 * 3600000
+            ? now() + (["expired", "failed"].includes(latest.status) ? 60 : 15) * 60000
             : null;
         tx.update(snap.ref, {
           reconcileCount: attempts,
           nextReconcileAtMs: next ?? FieldValue.delete(),
           reconcileFailures: 0,
-          needsReview: Boolean(latest.disputeReviewRequired || !latest.orderId || (!latest.paymentId && !next && latest.status !== "expired")),
+          needsReview: Boolean(latest.disputeReviewRequired || latest.lateCaptureAfterClose || !latest.orderId || (!latest.paymentId && !next && !["expired", "failed"].includes(latest.status))),
         });
         });
       } catch (error) {

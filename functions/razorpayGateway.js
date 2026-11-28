@@ -72,7 +72,7 @@ function createRazorpayGateway({ keyId, keySecret, fetchImpl = fetch }) {
       ),
     fetchPayment: (paymentId) => call("GET", `payments/${id(paymentId)}`),
     fetchOrderPayments: (orderId) =>
-      call("GET", `orders/${id(orderId)}/payments`),
+      call("GET", `orders/${id(orderId)}/payments?count=100`),
   };
 }
 module.exports = { createRazorpayGateway };
